@@ -114,7 +114,7 @@ flowchart TB
 
 ## 🚀 Quick start
 
-> **Deploy to Vercel?** See **[DEPLOY.md](./DEPLOY.md)** — use **[`.env.vercel.example`](./.env.vercel.example)** (not `.env.example`).
+> **Deploy to Vercel?** Import **[`.env.example`](./.env.example)** (20 keys) — see **[ENV.md](./ENV.md)** + **[DEPLOY.md](./DEPLOY.md)**.
 
 ### Prerequisites
 

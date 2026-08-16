@@ -15,12 +15,16 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "env": {
-    "PYTHONPATH": "."
+    "PYTHONPATH": ".",
+    "AUTO_SEED_ON_STARTUP": "false",
+    "PROVIDER_PRIORITY": "gemini,groq,openrouter",
+    "INNGEST_APP_ID": "invoiceflow-ai"
   },
   "build": {
     "env": {
       "VITE_API_BASE_URL": "/api",
-      "VITE_USE_ASYNC_JOBS": "true"
+      "VITE_USE_ASYNC_JOBS": "true",
+      "VITE_UPLOAD_TIMEOUT_MS": "300000"
     }
   }
 }

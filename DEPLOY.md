@@ -1,165 +1,98 @@
 # Deploy to Vercel
 
-One-command deploy after env vars are set. The repo ships with `vercel.json` (React SPA + Python FastAPI serverless).
+**Full env reference:** [ENV.md](./ENV.md) (every key explained)
 
-**Live checklist:** `GET /api/health` → `deploy.ready: true`
+**Import file:** [`.env.example`](./.env.example) → 20 keys for Vercel
 
----
-
-## 1. Create Vercel project
-
-1. Go to [vercel.com/new](https://vercel.com/new) and import  
-   `keshav-077/zamp-Invoice-processing-from-PDF-to-decision`
-2. **Root directory:** leave as repo root (contains `vercel.json`)
-3. Framework preset: **Other** (config is in `vercel.json`)
+**Live check:** `GET /api/health` → `deploy.ready: true`
 
 ---
 
-## 2. Required services
+## 1. Import environment variables
 
-| Service | Purpose | Get it |
-|---------|---------|--------|
-| **Neon Postgres** | Persistent DB (SQLite does not work on Vercel) | [neon.tech](https://neon.tech) |
-| **Vercel Blob** | Invoice file storage | Vercel dashboard → Storage → Blob |
-| **Gemini API** | Vision LLM extraction | [Google AI Studio](https://aistudio.google.com/apikey) |
+1. Open [vercel.com](https://vercel.com) → your project → **Settings → Environment Variables**
+2. **Import `.env`** → choose `.env.example` from this repo (or paste contents)
+3. Select **Production** + **Preview**
+4. Fill secrets for keys marked in [ENV.md](./ENV.md#required--you-must-fill-these)
 
-### Recommended
+### Minimum secrets to fill (4)
 
-| Service | Purpose |
-|---------|---------|
-| **Inngest** | Durable async jobs beyond 300s / retries | [inngest.com](https://www.inngest.com) |
-| Groq / OpenRouter | LLM fallbacks |
+| Key | Get it from |
+|-----|-------------|
+| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `DATABASE_URL` | [neon.tech](https://neon.tech) → connection string |
+| `BLOB_READ_WRITE_TOKEN` | Vercel → **Storage** → **Blob** |
+| `AUTO_SEED_ON_STARTUP` | Type `false` |
 
----
+### Recommended secrets (+5)
 
-## 3. Environment variables
+| Key | Get it from |
+|-----|-------------|
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) |
+| `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `INNGEST_EVENT_KEY` | [inngest.com](https://www.inngest.com) |
+| `INNGEST_SIGNING_KEY` | Inngest dashboard |
 
-> **Important:** Vercel may auto-detect `.env.example` — that file is **local dev only**.  
-> Use **[`.env.vercel.example`](./.env.vercel.example)** as the source of truth for production.
-
-Vercel → **Settings → Environment Variables** → add each key from `.env.vercel.example`  
-(apply to **Production** and **Preview**).
-
-### Minimum to go live (4 vars)
-
-| Variable | Example / notes |
-|----------|-----------------|
-| `GEMINI_API_KEY` | Google AI Studio |
-| `DATABASE_URL` | `postgresql://...@...neon.tech/...?sslmode=require` |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Storage → Blob |
-| `AUTO_SEED_ON_STARTUP` | `false` |
-
-### Recommended full set (12 vars)
-
-Copy from `.env.vercel.example`:
-
-- **Required:** `GEMINI_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `AUTO_SEED_ON_STARTUP`
-- **Fallbacks:** `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `PROVIDER_PRIORITY`
-- **Frontend build:** `VITE_API_BASE_URL=/api`, `VITE_USE_ASYNC_JOBS=true`
-- **Async jobs:** `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_APP_ID`
-
-After deploy, register Inngest sync URL:  
-`https://YOUR-DOMAIN.vercel.app/api/inngest`
-
-### Do NOT add on Vercel (local only)
-
-These belong in local `.env` only — remove them if Vercel imported them:
-
-`DATABASE_PATH`, `UPLOAD_DIR`, `API_HOST`, `API_PORT`, tax/processing tuning unless you need custom values.
+All other imported keys can keep their **default values** from `.env.example`.
 
 ---
 
-## 4. Initialize production database (one time)
+## 2. Connect GitHub & deploy
 
-From your machine with `DATABASE_URL` set to Neon:
+1. Import repo: `keshav-077/zamp-Invoice-processing-from-PDF-to-decision`
+2. Root directory: repo root (contains `vercel.json`)
+3. Deploy — or push to `main` for auto-deploy
+
+---
+
+## 3. Seed production database (one time)
 
 ```bash
 cd invoiceflow-ai
 pip install -r requirements.txt
-export DATABASE_URL="postgresql://..."
+set DATABASE_URL=postgresql://YOUR_NEON_URL
 python scripts/reset_db.py
 ```
 
-This creates schema + seeds demo PO master from `data/PO.xlsx`.
-
 ---
 
-## 5. Deploy
+## 4. Sync Inngest (if using async jobs)
 
-```bash
-npm i -g vercel
-vercel login
-vercel --prod
-```
+Inngest dashboard → App URL:
 
-Or push to `main` if GitHub integration is connected.
-
----
-
-## 6. Verify
-
-```bash
-curl https://YOUR-APP.vercel.app/api/health
-```
-
-Expect:
-
-```json
-{
-  "status": "healthy",
-  "deploy": {
-    "ready": true,
-    "platform": "vercel",
-    "checks": [ ... ]
-  }
-}
-```
-
-Upload an invoice at `https://YOUR-APP.vercel.app/`
-
----
-
-## Architecture on Vercel
-
-```
-Browser → Vercel CDN (React SPA)
-       → /api/* → Python serverless (FastAPI)
-       → Neon Postgres (DATABASE_URL)
-       → Vercel Blob (uploads)
-       → Inngest (optional async pipeline)
-       → Gemini / Groq / OpenRouter
+```text
+https://YOUR-APP.vercel.app/api/inngest
 ```
 
 ---
 
-## Limits
+## 5. Verify
 
-| Limit | Value |
-|-------|-------|
-| Serverless max duration | **300s** (`vercel.json`) |
-| Without Inngest | Jobs run as **background tasks** in same invocation (300s cap) |
-| With Inngest | Long pipelines + retries |
+Open `https://YOUR-APP.vercel.app/api/health`
+
+Upload a test invoice at `https://YOUR-APP.vercel.app/`
 
 ---
 
-## Troubleshooting
+## Local dev (separate from Vercel)
 
-| Symptom | Fix |
-|---------|-----|
-| UI calls `localhost:8000` | Set `VITE_API_BASE_URL=/api` and **redeploy** (build-time var) |
-| Upload 501 | Add `BLOB_READ_WRITE_TOKEN` |
-| Data disappears | Set `DATABASE_URL` (Neon) — not SQLite |
-| Extraction fails | Check `GEMINI_API_KEY`; see provider errors in `/api/health` |
-| Job stuck queued | Check function logs; add Inngest keys |
-| `deploy.ready: false` | Open `/api/health` → fix failed `checks` |
-
----
-
-## Local development (unchanged)
+Use [`.env.local.example`](./.env.local.example) → `.env` — not `.env.example`.
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 cd frontend && npm run dev
 ```
 
-Uses SQLite + local `uploads/` — no Vercel services required.
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Only 4 env vars detected | Re-import latest `.env.example` from GitHub (20 keys) |
+| `deploy.ready: false` | Fill `DATABASE_URL` + `BLOB_READ_WRITE_TOKEN` |
+| UI hits localhost | Redeploy after setting `VITE_API_BASE_URL=/api` |
+| Upload 501 | Add Blob token |
+| Extraction fails | Check LLM keys in `/api/health` |
+
+See [ENV.md](./ENV.md) for the complete key list.
