@@ -1,7 +1,8 @@
 """
-Vercel serverless entry point for FastAPI.
+Legacy Vercel /api entry (optional).
 
-Vercel routes /api/* here. The app instance is imported from app.main.
+Production uses app.main:app via pyproject.toml [tool.vercel] entrypoint.
+FastAPI handles /api/* and the React SPA — no vercel.json rewrites needed.
 """
 
 from app.main import app

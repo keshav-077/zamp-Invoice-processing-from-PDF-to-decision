@@ -89,6 +89,7 @@ cd frontend && npm run dev
 
 | Problem | Fix |
 |---------|-----|
+| UI shows `{"detail":"Not Found"}` | Redeploy latest `main` — broken `vercel.json` rewrites are removed; FastAPI serves `/api/*` and the React app via `app.frontend()`. |
 | Bundle size > 225 MB | **Redeploy latest `main`** (not an old failed deployment). In Vercel → **Settings → Build** set **Install Command** to empty (our `vercel.json` sets `"installCommand": ""`). Add env `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` and redeploy. OpenCV/PyMuPDF need Large Functions on Vercel. |
 | Only 4 env vars detected | Re-import latest `.env.example` from GitHub (20 keys) |
 | `deploy.ready: false` | Fill `DATABASE_URL` + `BLOB_READ_WRITE_TOKEN` |
