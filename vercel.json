@@ -7,7 +7,7 @@
   "functions": {
     "app/main.py": {
       "maxDuration": 300,
-      "excludeFiles": "{frontend/node_modules/**,frontend/src/**,tests/**,test_invoices/**,scripts/**,uploads/**,venv/**,.venv/**,env/**,data/**,**/__pycache__/**,**/.pytest_cache/**,**/*.md,requirements-dev.txt,requirements-prod.txt,.git/**,.github/**,.vercel/**,htmlcov/**,logs/**}"
+      "excludeFiles": "{frontend/node_modules/**,frontend/src/**,tests/**,test_invoices/**,scripts/**,venv/**,.venv/**,uploads/**}"
     }
   },
   "env": {
