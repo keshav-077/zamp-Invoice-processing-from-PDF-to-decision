@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Testing (local dev only — not installed on Vercel)
+pytest>=8.3.0
+pytest-asyncio>=0.24.0

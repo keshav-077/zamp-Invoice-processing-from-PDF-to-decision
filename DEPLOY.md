@@ -89,6 +89,7 @@ cd frontend && npm run dev
 
 | Problem | Fix |
 |---------|-----|
+| Bundle size > 225 MB | Do **not** set a custom `installCommand` in `vercel.json`; Vercel installs from `requirements.txt` and optimizes the Python bundle. `excludeFiles` on `api/index.py` keeps frontend/tests out of the function. |
 | Only 4 env vars detected | Re-import latest `.env.example` from GitHub (20 keys) |
 | `deploy.ready: false` | Fill `DATABASE_URL` + `BLOB_READ_WRITE_TOKEN` |
 | UI hits localhost | Redeploy after setting `VITE_API_BASE_URL=/api` |

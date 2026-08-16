@@ -128,7 +128,7 @@ flowchart TB
 git clone https://github.com/keshav-077/zamp-Invoice-processing-from-PDF-to-decision.git
 cd zamp-Invoice-processing-from-PDF-to-decision
 
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
 # Add GEMINI_API_KEY (and optional GROQ / OPENROUTER fallbacks)
 

@@ -1,17 +1,29 @@
 # Local dev caches
 venv/
 .venv/
+env/
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
 *.db
 *.db-shm
 *.db-wal
 .env
 .env.local
 
-# Frontend (built on Vercel)
+# Frontend dev artifacts (dist is built on Vercel)
 frontend/node_modules/
+frontend/dist/
 
-# Large local-only artifacts
+# Not needed at runtime on Vercel
+tests/
+test_invoices/
+scripts/
 uploads/*
 !uploads/.gitkeep
+data/
+logs/
+*.md
+requirements-dev.txt

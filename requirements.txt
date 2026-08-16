@@ -36,7 +36,3 @@ vercel-blob>=0.3.0
 inngest>=0.4.0
 PyJWT>=2.9.0
 cryptography>=43.0.0
-
-# Testing
-pytest>=8.3.0
-pytest-asyncio>=0.24.0
