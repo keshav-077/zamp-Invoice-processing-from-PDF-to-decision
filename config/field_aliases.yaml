@@ -1,0 +1,43 @@
+# Field label aliases for charge categorization (config-driven, not hardcoded in Python)
+charge_categories:
+  shipping:
+    - shipping
+    - shipping & handling
+    - shipping and handling
+    - freight
+    - delivery
+    - carriage
+    - transport
+  handling:
+    - handling
+    - processing fee
+  maintenance:
+    - maintenance
+    - service fee
+    - maintenance fee
+  surcharge:
+    - surcharge
+    - fuel surcharge
+    - misc
+    - miscellaneous
+  discount:
+    - discount
+    - rebate
+    - credit
+    - promotion
+
+due_date_terms_patterns:
+  - "net\\s*(\\d+)"
+  - "(\\d+)\\s*days?\\s*after"
+  - "payment\\s*(\\d+)\\s*days"
+  - "due\\s*in\\s*(\\d+)\\s*days"
+
+date_formats:
+  - "%Y-%m-%d"
+  - "%d/%m/%Y"
+  - "%m/%d/%Y"
+  - "%d-%m-%Y"
+  - "%d %b %Y"
+  - "%d %B %Y"
+  - "%b %d, %Y"
+  - "%B %d, %Y"

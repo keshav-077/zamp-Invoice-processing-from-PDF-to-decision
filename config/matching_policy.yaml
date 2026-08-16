@@ -1,0 +1,78 @@
+# Stage 2 matching policy — company-agnostic, no invoice-specific rules
+version: "MATCH-2026.08.1"
+
+scoring:
+  max_po_match: 40
+  max_vendor_match: 20
+  max_line_match: 20
+  max_amount_match: 10
+  max_historical: 5
+  max_date_match: 5
+  retrieval_weights:
+    exact: 1.0
+    normalized: 0.85
+    reference: 0.75
+    vendor_search: 0.55
+    vendor_amount: 0.45
+    unique_vendor_amount: 0.7
+    vendor_name: 0.5
+    fuzzy: 0.25
+    import_derived: 0.55
+    source_record_po_hint: 0.55
+  amount:
+    # Invoice <= remaining balance is valid partial PO usage (full amount points)
+    partial_usage_full_score: true
+    over_remaining_tolerance_pct: 0.05
+
+retrieval:
+  max_candidates: 20
+  vendor_amount_tolerance_pct: 0.15
+  allow_broadcast: false
+
+ambiguity:
+  ambiguous_gap: 5
+  auto_select_gap: 15
+  exact_match_threshold: 95
+  high_confidence_threshold: 85
+  minimum_match_threshold: 70
+
+# Auto-match without printed PO when evidence is strong
+no_po_auto_match:
+  enabled: true
+  min_line_coverage: 0.85
+  min_vendor_match: 15
+  min_line_match: 14
+  min_amount_match: 8
+  min_gap: 10
+  require_vendor_exact: true
+  require_balance_ok: true
+  require_no_overbilling_flag: true
+
+# Single open PO for vendor — auto-match without printed PO or line coverage
+vendor_amount_no_po_auto_match:
+  enabled: true
+  require_single_open_po_for_vendor: true
+  min_vendor_match: 15
+  min_amount_match: 8
+  max_line_coverage_required: 0.0
+  max_tolerance_pct: 0.15
+  require_balance_ok: true
+  auto_status: high_confidence_match
+
+# Vendor + amount only — unique open PO (Spec Section 10)
+unique_vendor_amount_match:
+  enabled: true
+  max_tolerance_pct: 0.02
+  allow_partial_usage: true
+  require_single_candidate: true
+  require_vendor_exact: true
+  require_currency_match: true
+  allow_without_line_match: true
+  auto_status: high_confidence_match
+  min_amount_match: 8
+
+approval:
+  # Stage 3–5 auto-approval requires these identity fields even if matching succeeded
+  required_for_auto_approval:
+    - invoice_number
+    - invoice_date

@@ -1,0 +1,102 @@
+# Canonical master-data field aliases for adaptive import mapping
+version: "IMPORT-MAP-2026.08.2"
+
+confidence:
+  auto_accept: 0.85
+  review_below: 0.55
+
+row_classification:
+  po_sentinels: [none, n/a, na, null, nil, "-", missing, not applicable, unknown]
+  field_aliases:
+    invoice:
+      invoice_number: [invoice_number, inv_number, invoice_no]
+      secondary_id_number: [secondary_id_number, secondary_id]
+      invoice_total: [invoice_total, inv_total]
+      invoice_subtotal: [invoice_subtotal, invoice_subtotal, subtotal]
+      invoice_date: [invoice_date, inv_date]
+      vendor_name: [vendor_name, vendor_name_on_invoice, supplier_name]
+      po_number: [po_number, po, po_no]
+      po_reference: [po_number, po_reference, po_ref]
+  entities:
+    purchase_order:
+      required_any: [po_number]
+      supporting_any: [po_amount, total_amount, po_status, issue_date, po_date, status]
+    invoice_transaction:
+      required_any: [invoice_number, secondary_id_number]
+      supporting_any: [invoice_total, invoice_subtotal, invoice_date]
+    vendor:
+      required_any: [vendor_id, tax_id, supplier_code, name, vendor_name]
+      supporting_any: []
+
+entities:
+  vendor:
+    po_number: []
+    fields:
+      vendor_id: [vendor_id, vendorid, supplier_id, supplier_number, id]
+      name: [name, vendor_name, supplier_name, vendor, supplier, vendor_name_on_invoice]
+      tax_id: [tax_id, taxid, gstin, vat, ein, gst, pan]
+      supplier_code: [supplier_code, vendor_code, code, supplier_no]
+      aliases: [aliases, alias, aka]
+      status: [status, vendor_status]
+  po:
+    fields:
+      po_number: [po_number, po, po_no, purchase_order, ponumber, order_number]
+      vendor_id: [vendor_id, supplier_id]
+      vendor_name: [vendor_name, supplier_name, vendor, supplier, vendor_name_on_invoice, vendor_name_on_po]
+      supplier_code: [supplier_code, vendor_code]
+      total_amount: [total_amount, po_total, amount, total, po_amount]
+      currency: [currency, curr, currency_code]
+      status: [status, po_status]
+      po_type: [po_type, type, order_type]
+      issue_date: [issue_date, po_date, date, order_date, invoice_date]
+      expiry_date: [expiry_date, expiration_date, end_date]
+      received_amount: [received_amount, received_total]
+      previously_invoiced: [previously_invoiced, invoiced_to_date, billed_to_date]
+  invoice_transaction:
+    fields:
+      vendor_name: [vendor_name, vendor_name_on_invoice, supplier_name, vendor]
+      vendor_id: [vendor_id, supplier_id]
+      invoice_number: [invoice_number, inv_number, invoice_no]
+      invoice_date: [invoice_date, inv_date]
+      invoice_subtotal: [invoice_subtotal, subtotal]
+      invoice_total: [invoice_total, inv_total]
+      invoice_tax: [invoice_tax, tax]
+      currency: [currency, curr]
+      po_reference: [po_number, po_reference, po_ref]
+  line:
+    fields:
+      po_number: [po_number, po, po_no, order_number]
+      line_number: [line_number, line, line_no, lineno, item_number]
+      description: [description, item_description, desc, product, item_name]
+      sku: [sku, item_code, part_number, product_code, material]
+      quantity: [quantity, qty, ordered_qty]
+      unit_price: [unit_price, price, unit_cost, rate]
+      amount: [amount, line_total, extended_amount, line_amount]
+      uom: [uom, unit, unit_of_measure]
+  grn:
+    fields:
+      grn_id: [grn_id, receipt_id, grn, goods_receipt]
+      po_number: [po_number, po]
+      received_date: [received_date, receipt_date, grn_date]
+      received_amount: [received_amount, amount, receipt_amount]
+      status: [status]
+  reference:
+    fields:
+      po_number: [po_number, po]
+      reference_type: [reference_type, ref_type, type]
+      reference_value: [reference_value, ref, reference, order_ref, contract_ref, customer_po]
+
+sheet_hints:
+  vendor: [vendor, vendors, supplier, suppliers, vendor_master]
+  po: [po, pos, purchase_order, purchaseorders, purchase_orders, orders]
+  line: [line, lines, po_line, polines, po_lines, line_items, items]
+  grn: [grn, grn_records, receipts, goods_receipt]
+  reference: [reference, references, refs, po_references]
+
+flat_record_types:
+  vendor: [vendor, suppliers]
+  po: [po, purchase_order, order]
+  line: [line, item, po_line]
+  grn: [grn, receipt]
+  reference: [reference, ref]
+  invoice_transaction: [invoice, invoice_transaction, transaction]

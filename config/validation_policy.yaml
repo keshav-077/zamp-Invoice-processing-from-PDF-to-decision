@@ -1,0 +1,31 @@
+version: AP-VALIDATION-2026.08.1
+
+tolerances:
+  price_tolerance_pct: 0.02
+  qty_tolerance_pct: 0.05
+  tax_tolerance_pct: 0.12
+  budget_tolerance_pct: 0.05
+
+tax_policy:
+  mode: expected_rate  # zero_exempt | consistency_only | expected_rate
+  default_expected_rate: 0.08
+  vendor_tax_rates:
+    "rogers, smith and hobbs": 0.193
+
+duplicate_policy:
+  blocking_prior_decisions:
+    - APPROVE
+    - AUTO_APPROVED
+    - APPROVAL_REQUIRED
+  ignore_prior_decisions:
+    - REJECT
+    - TERMINAL_REJECT
+  ignore_prior_stage3:
+    - BLOCKED
+  block_if_prior_allocated: true
+
+approval_thresholds: [10000, 25000, 50000]
+
+grn:
+  required_po_types: [standard]
+  optional_po_types: [blanket, service]

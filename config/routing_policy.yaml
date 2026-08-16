@@ -1,0 +1,87 @@
+# Stage 1 routing policy — config-driven, not hardcoded in router.py
+# Fields required for Stage 4 auto-approval (matching can proceed with fewer)
+approval_critical_fields:
+  - total_amount
+  - invoice_number
+  - vendor_name
+  - invoice_date
+  - currency
+
+# Legacy alias — used for extraction review flags
+critical_fields:
+  - total_amount
+  - invoice_number
+  - vendor_name
+  - invoice_date
+  - currency
+
+# PO resolution — single authoritative minimum signals policy (Spec Section 31)
+po_resolution:
+  allow_partial_evidence: true
+  minimum_signals:
+    any_of:
+      - vendor_name
+      - total_amount
+      - po_reference
+      - line_items
+      - typed_references
+
+# Deprecated — use po_resolution.minimum_signals.any_of
+matching_signals:
+  - vendor_name
+  - total_amount
+  - line_items
+
+thresholds:
+  total_amount: 0.95
+  tax_amount: 0.95
+  currency: 0.85
+  invoice_number: 0.90
+  vendor_name: 0.85
+  invoice_date: 0.90
+  po_reference: 0.70
+  due_date: 0.70
+  line_items: 0.75
+
+# Reconciliation outcomes that block auto-pass
+blocking_reconciliation:
+  - failed
+
+# Reconciliation outcomes that allow pass with note
+non_blocking_reconciliation:
+  - reconciled
+  - reconciled_with_inferred_charges
+  - partial
+
+# Reconciliation outcomes that flag review but don't alone block if other checks pass
+review_reconciliation:
+  - residual_review
+
+non_blocking_fields:
+  - due_date
+  - po_reference
+  - subtotal
+  - tax_amount
+  - line_items
+
+# Verification: only these fields at high severity block routing
+blocking_verification_fields:
+  - total_amount
+  - vendor_name
+  - invoice_number
+  - currency
+
+# When reconciliation + verification both pass, relax confidence on these fields
+confidence_boost_when_reconciled:
+  fields:
+    - invoice_date
+    - total_amount
+  boost_amount: 0.05
+
+residual_review_threshold: 50.0
+
+inferred_currency:
+  min_confidence: 0.85
+  allowed_statuses:
+    - inferred
+    - extracted

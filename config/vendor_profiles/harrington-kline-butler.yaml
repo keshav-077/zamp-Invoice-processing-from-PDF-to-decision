@@ -1,0 +1,17 @@
+vendor_id: harrington-kline-butler
+aliases:
+  - "Harrington, Kline and Butler"
+  - "Harrington Kline Butler"
+layout_hints:
+  total_label: "TOTAL DUE BY DATE"
+  fee_labels:
+    - "SHIPPING & HANDLING"
+    - "SALES TAX"
+  due_terms_pattern: "Payment \\d+ days after invoice date"
+reconciliation:
+  expected_charges:
+    - shipping
+    - tax
+threshold_overrides:
+  total_amount: 0.95
+  invoice_date: 0.85
