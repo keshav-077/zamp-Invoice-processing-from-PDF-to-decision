@@ -32,44 +32,40 @@ One-command deploy after env vars are set. The repo ships with `vercel.json` (Re
 
 ---
 
-## 3. Environment variables (Vercel → Settings → Environment Variables)
+## 3. Environment variables
 
-### Required
+> **Important:** Vercel may auto-detect `.env.example` — that file is **local dev only**.  
+> Use **[`.env.vercel.example`](./.env.vercel.example)** as the source of truth for production.
 
-```env
-GEMINI_API_KEY=...
-DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
-BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
-AUTO_SEED_ON_STARTUP=false
-```
+Vercel → **Settings → Environment Variables** → add each key from `.env.vercel.example`  
+(apply to **Production** and **Preview**).
 
-### Frontend build (set for Production + Preview)
+### Minimum to go live (4 vars)
 
-```env
-VITE_API_BASE_URL=/api
-VITE_USE_ASYNC_JOBS=true
-```
+| Variable | Example / notes |
+|----------|-----------------|
+| `GEMINI_API_KEY` | Google AI Studio |
+| `DATABASE_URL` | `postgresql://...@...neon.tech/...?sslmode=require` |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Storage → Blob |
+| `AUTO_SEED_ON_STARTUP` | `false` |
 
-> Also defined in `vercel.json` `build.env` — override in dashboard if needed.
+### Recommended full set (12 vars)
 
-### Inngest (recommended for production)
+Copy from `.env.vercel.example`:
 
-```env
-INNGEST_EVENT_KEY=...
-INNGEST_SIGNING_KEY=...
-INNGEST_APP_ID=invoiceflow-ai
-```
+- **Required:** `GEMINI_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `AUTO_SEED_ON_STARTUP`
+- **Fallbacks:** `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `PROVIDER_PRIORITY`
+- **Frontend build:** `VITE_API_BASE_URL=/api`, `VITE_USE_ASYNC_JOBS=true`
+- **Async jobs:** `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `INNGEST_APP_ID`
 
-After deploy, register Inngest app URL:  
+After deploy, register Inngest sync URL:  
 `https://YOUR-DOMAIN.vercel.app/api/inngest`
 
-### Optional fallbacks
+### Do NOT add on Vercel (local only)
 
-```env
-GROQ_API_KEY=...
-OPENROUTER_API_KEY=...
-PROVIDER_PRIORITY=gemini,groq,openrouter
-```
+These belong in local `.env` only — remove them if Vercel imported them:
+
+`DATABASE_PATH`, `UPLOAD_DIR`, `API_HOST`, `API_PORT`, tax/processing tuning unless you need custom values.
 
 ---
 

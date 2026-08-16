@@ -114,7 +114,7 @@ flowchart TB
 
 ## 🚀 Quick start
 
-> **Deploy to Vercel?** See **[DEPLOY.md](./DEPLOY.md)** for Neon + Blob + env vars.
+> **Deploy to Vercel?** See **[DEPLOY.md](./DEPLOY.md)** — use **[`.env.vercel.example`](./.env.vercel.example)** (not `.env.example`).
 
 ### Prerequisites
 
