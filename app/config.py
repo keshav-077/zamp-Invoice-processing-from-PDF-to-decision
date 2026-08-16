@@ -6,6 +6,7 @@ Contains all configurable thresholds, provider settings, and paths.
 """
 
 from pathlib import Path
+import os
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -107,6 +108,14 @@ class Settings(BaseSettings):
     def provider_list(self) -> list[str]:
         """Parse comma-separated provider priority string."""
         return [p.strip() for p in self.provider_priority.split(",") if p.strip()]
+
+    @property
+    def is_vercel(self) -> bool:
+        return bool(os.environ.get("VERCEL"))
+
+    @property
+    def vercel_env(self) -> str:
+        return os.environ.get("VERCEL_ENV", "")
 
     @property
     def upload_path(self) -> Path:

@@ -1,4 +1,19 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
+/**
+ * API base URL — defaults to same-origin /api in production builds (Vercel).
+ * Override with VITE_API_BASE_URL for local dev or split hosting.
+ */
+function resolveApiBase(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL
+  if (configured && configured.trim()) {
+    return configured.replace(/\/$/, '')
+  }
+  if (import.meta.env.PROD) {
+    return '/api'
+  }
+  return 'http://localhost:8000/api'
+}
+
+const API_BASE = resolveApiBase()
 const UPLOAD_TIMEOUT = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS ?? 300000)
 
 function formatApiDetail(detail: unknown, fallback: string): string {

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+
+from fastapi import BackgroundTasks
 
 from app.config import settings
 from app.jobs.job_service import run_job
@@ -42,16 +43,40 @@ def get_inngest():
         _inngest_client = client
         return client
     except ImportError:
-        logger.warning("inngest package not installed — using inline fallback")
+        logger.warning("inngest package not installed — using background task fallback")
         return None
 
 
-async def enqueue_invoice_job(job_id: str) -> None:
-    """Send Inngest event or run inline when Inngest is not configured."""
-    client = get_inngest()
-    if client is None:
-        await run_job(job_id)
-        return
-    import inngest
+async def schedule_invoice_job(
+    job_id: str,
+    background_tasks: BackgroundTasks | None = None,
+) -> str:
+    """
+    Queue invoice processing without blocking the HTTP response.
 
-    await client.send(inngest.Event(name="invoice/process", data={"job_id": job_id}))
+    Returns processing mode: inngest | background | inline
+    """
+    client = get_inngest()
+    if client is not None:
+        import inngest
+
+        await client.send(inngest.Event(name="invoice/process", data={"job_id": job_id}))
+        logger.info("Job %s queued via Inngest", job_id)
+        return "inngest"
+
+    if background_tasks is not None:
+        background_tasks.add_task(run_job, job_id)
+        logger.info("Job %s scheduled as background task", job_id)
+        return "background"
+
+    await run_job(job_id)
+    logger.info("Job %s completed inline", job_id)
+    return "inline"
+
+
+# Backward-compatible alias
+async def enqueue_invoice_job(
+    job_id: str,
+    background_tasks: BackgroundTasks | None = None,
+) -> None:
+    await schedule_invoice_job(job_id, background_tasks=background_tasks)

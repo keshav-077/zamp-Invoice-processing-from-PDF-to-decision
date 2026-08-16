@@ -114,6 +114,8 @@ flowchart TB
 
 ## 🚀 Quick start
 
+> **Deploy to Vercel?** See **[DEPLOY.md](./DEPLOY.md)** for Neon + Blob + env vars.
+
 ### Prerequisites
 
 - **Python 3.11+**

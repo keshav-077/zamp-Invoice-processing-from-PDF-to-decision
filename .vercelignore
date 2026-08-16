@@ -1,0 +1,17 @@
+# Local dev caches
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+
+# Frontend (built on Vercel)
+frontend/node_modules/
+
+# Large local-only artifacts
+uploads/*
+!uploads/.gitkeep

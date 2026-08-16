@@ -10,7 +10,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Request, Depends, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Request, Depends, Form, BackgroundTasks
 from fastapi.responses import FileResponse
 
 from app.config import settings
@@ -21,7 +21,8 @@ from app.pipeline.orchestrator import PipelineOrchestrator
 from app.providers.factory import get_provider, get_available_providers
 from app.storage.storage_service import get_storage
 from app.jobs.job_service import create_job
-from app.jobs.inngest_handler import enqueue_invoice_job
+from app.deploy import evaluate_deploy_readiness
+from app.jobs.inngest_handler import schedule_invoice_job
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["invoices"])
@@ -40,7 +41,12 @@ async def get_blob_upload_token(request: Request, _user: dict | None = Depends(o
 
 
 @router.post("/jobs", status_code=202)
-async def create_processing_job(request: Request, body: dict, _user: dict | None = Depends(optional_auth)):
+async def create_processing_job(
+    request: Request,
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _user: dict | None = Depends(optional_auth),
+):
     """Enqueue invoice processing after client-side Blob upload."""
     await rate_limit(request, bucket="jobs", limit=10)
     filename = body.get("filename")
@@ -50,11 +56,12 @@ async def create_processing_job(request: Request, body: dict, _user: dict | None
         raise HTTPException(status_code=400, detail="filename required")
 
     job = create_job(filename=filename, blob_url=blob_url, storage_key=storage_key)
-    await enqueue_invoice_job(job["job_id"])
+    mode = await schedule_invoice_job(job["job_id"], background_tasks=background_tasks)
     return {
         "job_id": job["job_id"],
         "status": job["status"],
         "message": "Processing queued",
+        "processing_mode": mode,
     }
 
 
@@ -129,6 +136,7 @@ async def upload_invoice(request: Request, file: UploadFile = File(...), _user: 
 @router.post("/upload/async", status_code=202)
 async def upload_invoice_async(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     _user: dict | None = Depends(optional_auth),
 ):
@@ -147,8 +155,13 @@ async def upload_invoice_async(
     storage_key, blob_url = await storage.save_upload(unique_name, content)
 
     job = create_job(filename=file.filename, blob_url=blob_url, storage_key=storage_key)
-    await enqueue_invoice_job(job["job_id"])
-    return {"job_id": job["job_id"], "status": "queued", "filename": file.filename}
+    mode = await schedule_invoice_job(job["job_id"], background_tasks=background_tasks)
+    return {
+        "job_id": job["job_id"],
+        "status": "queued",
+        "filename": file.filename,
+        "processing_mode": mode,
+    }
 
 
 @router.get("/invoices")
@@ -201,12 +214,19 @@ async def get_stats():
 
 @router.get("/health")
 async def health_check():
-    """Health check with provider availability status."""
+    """Health check with provider availability and deploy readiness."""
     available = get_available_providers()
+    deploy = evaluate_deploy_readiness()
+    status = "healthy"
+    if not available:
+        status = "degraded"
+    elif settings.is_vercel and not deploy.ready:
+        status = "degraded"
     return {
-        "status": "healthy" if available else "degraded",
+        "status": status,
         "available_providers": available,
         "configured_priority": settings.provider_list,
+        "deploy": deploy.to_dict(),
     }
 
 

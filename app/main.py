@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db.database import init_db, close_db
+from app.deploy import evaluate_deploy_readiness
 from app.api.routes import router
 from app.webhooks.resend import router as webhooks_router
 
@@ -43,6 +44,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Provider priority: {settings.provider_list}")
     logger.info(f"Storage: {'Vercel Blob' if settings.blob_read_write_token else 'local'}")
     logger.info(f"Database: {'Postgres' if settings.database_url else settings.db_path}")
+
+    deploy = evaluate_deploy_readiness()
+    if settings.is_vercel:
+        logger.info("Running on Vercel (%s)", settings.vercel_env or "unknown")
+        logger.info("Deploy ready: %s", deploy.ready)
+        for warning in deploy.warnings:
+            logger.warning("Deploy: %s", warning)
+        for check in deploy.checks:
+            if check.required and not check.ok:
+                logger.error("Deploy check failed: %s — %s", check.name, check.detail)
 
     yield
     close_db()

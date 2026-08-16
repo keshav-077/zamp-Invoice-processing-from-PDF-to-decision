@@ -9,10 +9,10 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from app.config import settings
-from app.jobs.inngest_handler import enqueue_invoice_job
+from app.jobs.inngest_handler import schedule_invoice_job
 from app.jobs.job_service import create_job
 from app.storage.storage_service import get_storage
 
@@ -34,7 +34,7 @@ def _verify_resend_signature(payload: bytes, signature: str | None) -> bool:
 
 
 @router.post("/resend/inbound")
-async def resend_inbound(request: Request):
+async def resend_inbound(request: Request, background_tasks: BackgroundTasks):
     """Ingest inbound invoice email with attachment."""
     body = await request.body()
     sig = request.headers.get("svix-signature") or request.headers.get("x-resend-signature")
@@ -54,10 +54,11 @@ async def resend_inbound(request: Request):
     storage = get_storage()
     storage_key, blob_url = await storage.save_upload(filename, content)
     job = create_job(filename=filename, blob_url=blob_url, storage_key=storage_key)
-    await enqueue_invoice_job(job["job_id"])
+    mode = await schedule_invoice_job(job["job_id"], background_tasks=background_tasks)
 
     return {
         "status": "accepted",
         "job_id": job["job_id"],
+        "processing_mode": mode,
         "received_at": datetime.now(timezone.utc).isoformat(),
     }
