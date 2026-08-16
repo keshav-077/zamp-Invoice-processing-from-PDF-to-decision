@@ -89,7 +89,7 @@ cd frontend && npm run dev
 
 | Problem | Fix |
 |---------|-----|
-| Bundle size > 225 MB | Do **not** set a custom `installCommand` in `vercel.json`; Vercel installs from `requirements.txt` and optimizes the Python bundle. `excludeFiles` on `api/index.py` keeps frontend/tests out of the function. |
+| Bundle size > 225 MB | **Redeploy latest `main`** (not an old failed deployment). In Vercel → **Settings → Build** set **Install Command** to empty (our `vercel.json` sets `"installCommand": ""`). Add env `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` and redeploy. OpenCV/PyMuPDF need Large Functions on Vercel. |
 | Only 4 env vars detected | Re-import latest `.env.example` from GitHub (20 keys) |
 | `deploy.ready: false` | Fill `DATABASE_URL` + `BLOB_READ_WRITE_TOKEN` |
 | UI hits localhost | Redeploy after setting `VITE_API_BASE_URL=/api` |

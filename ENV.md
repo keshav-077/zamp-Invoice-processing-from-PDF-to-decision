@@ -24,6 +24,7 @@ Complete list for **Vercel deployment**. Import [`.env.example`](./.env.example)
 | `DATABASE_URL` | **Yes** | [Neon](https://neon.tech) → Project → Connection string | `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require` |
 | `BLOB_READ_WRITE_TOKEN` | **Yes** | Vercel Dashboard → **Storage** → **Blob** → connect to project | `vercel_blob_rw_...` |
 | `AUTO_SEED_ON_STARTUP` | **Yes** | Set manually (not a secret) | `false` |
+| `VERCEL_SUPPORT_LARGE_FUNCTIONS` | **Yes** | Set manually — enables Large Functions for OpenCV/PyMuPDF bundle | `1` |
 
 After first deploy, seed the database once from your PC:
 

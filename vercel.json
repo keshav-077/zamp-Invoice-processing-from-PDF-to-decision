@@ -1,11 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
   "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
+  "installCommand": "",
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
-      "memory": 1024,
       "excludeFiles": "{frontend/**,tests/**,test_invoices/**,scripts/**,uploads/**,venv/**,.venv/**,env/**,data/**,**/__pycache__/**,**/.pytest_cache/**,**/*.md,requirements-dev.txt,requirements-prod.txt,.git/**,.github/**,.vercel/**,htmlcov/**,logs/**}"
     }
   },
