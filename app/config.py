@@ -120,11 +120,15 @@ class Settings(BaseSettings):
     @property
     def upload_path(self) -> Path:
         """Absolute path to the upload directory."""
+        if self.is_vercel and not self.blob_read_write_token:
+            return Path("/tmp/invoiceflow-uploads")
         return Path(__file__).parent.parent / self.upload_dir
 
     @property
     def db_path(self) -> Path:
         """Absolute path to the SQLite database."""
+        if self.is_vercel and not self.database_url:
+            return Path("/tmp/invoiceflow.db")
         return Path(__file__).parent.parent / self.database_path
 
     def get_threshold(self, field_name: str) -> float:

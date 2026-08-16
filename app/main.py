@@ -98,10 +98,13 @@ except Exception as exc:
 # React SPA (built to frontend/dist on Vercel). Registered last so /api routes win.
 _FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 if _FRONTEND_DIST.is_dir():
-    if hasattr(app, "frontend"):
-        app.frontend("/", directory=str(_FRONTEND_DIST))
-    else:
-        app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+    try:
+        if hasattr(app, "frontend"):
+            app.frontend("/", directory=str(_FRONTEND_DIST))
+        else:
+            app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+    except Exception as exc:
+        logger.warning("Frontend static files not mounted: %s", exc)
 
 
 if __name__ == "__main__":
