@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.config import settings  # noqa: E402
-from app.db.database import close_db, init_db, get_connection, _is_postgres  # noqa: E402
+from app.db.database import close_db, init_db, get_connection, _is_postgres, scalar_row  # noqa: E402
 from app.db.seed_data import seed_database  # noqa: E402
 
 # Child tables first (Postgres DELETE order)
@@ -80,9 +80,9 @@ def reset() -> None:
         seed_database()
 
     conn = get_connection()
-    vendors = conn.execute("SELECT COUNT(*) FROM vendors").fetchone()[0]
-    pos = conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone()[0]
-    src = conn.execute("SELECT COUNT(*) FROM source_records").fetchone()[0]
+    vendors = scalar_row(conn.execute("SELECT COUNT(*) FROM vendors").fetchone())
+    pos = scalar_row(conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone())
+    src = scalar_row(conn.execute("SELECT COUNT(*) FROM source_records").fetchone())
     backend = "Postgres" if settings.database_url else "SQLite"
     print(f"Re-seeded ({backend}): {vendors} vendors, {pos} POs, {src} source records")
 

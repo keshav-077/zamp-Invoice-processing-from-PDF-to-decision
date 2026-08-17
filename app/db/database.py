@@ -54,11 +54,31 @@ class _PgConnection:
         cur.execute(sql, params)
         return _PgResult(cur)
 
+    def executemany(self, sql: str, params_seq):
+        import psycopg2.extras
+
+        sql = sql.replace("?", "%s")
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.executemany(sql, params_seq)
+        return _PgResult(cur)
+
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def close(self):
         self._conn.close()
+
+
+def scalar_row(row) -> int | float | str | None:
+    """First column from sqlite Row or Postgres dict row."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
 
 
 def get_connection():
@@ -589,25 +609,41 @@ def _migrate_composite_po_keys(conn) -> None:
         logger.debug("Composite PO migration skipped: %s", exc)
 
 
+def _postgres_schema_sql(schema: str) -> str:
+    """Adapt SQLite-oriented DDL for Postgres."""
+    schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    schema = schema.replace(
+        "FOREIGN KEY (po_number) REFERENCES purchase_orders(po_number)",
+        "FOREIGN KEY (company_id, po_number) REFERENCES purchase_orders(company_id, po_number)",
+    )
+    return schema
+
+
 def init_db() -> None:
     """Initialize the database schema."""
     global _is_postgres
     conn = get_connection()
     schema = SCHEMA
     if _is_postgres:
-        schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        schema = _postgres_schema_sql(schema)
         for stmt in schema.split(";"):
             stmt = stmt.strip()
             if stmt:
                 try:
                     conn.execute(stmt)
+                    conn.commit()
                 except Exception as exc:
-                    logger.debug("Schema stmt skipped: %s", exc)
+                    if hasattr(conn, "rollback"):
+                        conn.rollback()
+                    logger.warning("Schema stmt skipped: %s — %s", stmt[:60], exc)
     else:
         conn.executescript(schema)
-    _migrate_columns(conn)
-    if not _is_postgres:
+        _migrate_columns(conn)
         _migrate_composite_po_keys(conn)
+        conn.commit()
+        logger.info("Database schema initialized")
+        return
+    _migrate_columns(conn)
     conn.commit()
     logger.info("Database schema initialized")
 

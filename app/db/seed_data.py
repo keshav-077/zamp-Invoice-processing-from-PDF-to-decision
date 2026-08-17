@@ -27,7 +27,9 @@ def seed_database() -> None:
     conn = get_connection()
 
     # Idempotency check – if vendors already exist, assume data is seeded
-    if conn.execute("SELECT COUNT(*) FROM vendors").fetchone()[0] > 0:
+    from app.db.database import scalar_row
+
+    if scalar_row(conn.execute("SELECT COUNT(*) FROM vendors").fetchone()) > 0:
         logger.info("Database already seeded — skipping")
         return
 
