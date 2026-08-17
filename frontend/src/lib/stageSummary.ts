@@ -161,7 +161,18 @@ export function getStage5Summary(result: PipelineResult): StageSummary {
   if (status === 'COMPLETE') {
     return { outcome: 'pass', badge: 'COMPLETE', summary: 'Full audit explanation generated for this decision.' }
   }
-  return { outcome: 'warn', badge: 'INCOMPLETE', summary: 'Explanation is partial — some evidence may be missing.' }
+  if (status === 'stage5_error') {
+    return {
+      outcome: 'warn',
+      badge: 'ERROR',
+      summary: 'Explanation engine failed — check narrative fallback or re-upload the invoice.',
+    }
+  }
+  return {
+    outcome: 'warn',
+    badge: status === 'INCOMPLETE' ? 'INCOMPLETE' : status.toUpperCase(),
+    summary: 'Explanation generated with partial evidence — review the step-by-step narrative below.',
+  }
 }
 
 export function getStageSummary(result: PipelineResult, stage: number): StageSummary {

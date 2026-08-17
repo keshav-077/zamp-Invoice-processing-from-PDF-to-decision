@@ -127,8 +127,12 @@ def build_buyer_summary(
 def build_narrative(
     decision_record: DecisionRecord,
     *,
+    extraction: dict[str, Any] | None = None,
     match_package: dict[str, Any] | None = None,
     validation_report: dict[str, Any] | None = None,
+    verification: dict[str, Any] | None = None,
+    reconciliation: dict[str, Any] | None = None,
+    routing_status: str | None = None,
     evidence_summary: list[str] | None = None,
 ) -> list[NarrativeEntry]:
     """
@@ -149,6 +153,12 @@ def build_narrative(
         icon=_decision_icon(decision_record.decision),
     ))
     step += 1
+
+    # --- Stage 1: What we extracted from the document ---
+    for entry in _build_stage1_entries(extraction, verification, reconciliation, routing_status):
+        entry.step = step
+        entries.append(entry)
+        step += 1
 
     # --- PO match context (Stage 2) ---
     match_text = _describe_po_match(match_package, summary_lines)
@@ -332,8 +342,9 @@ def _describe_po_match(
     parts = [f"Purchase order match: {status_label}"]
     if po:
         parts.append(f"PO {po}")
-    if score is not None:
-        parts.append(f"score {float(score):.0f}")
+    score_num = _safe_number(score)
+    if score_num is not None:
+        parts.append(f"score {score_num:.0f}")
     if method:
         parts.append(f"via {method.replace('_', ' ')}")
     return ". ".join(parts) + "."
@@ -403,6 +414,162 @@ def _render_rule(rule: RuleEvaluation) -> str:
         return f"❌ {rule.rule_id}: {rule.detail}"
 
     return ""
+
+
+def build_narrative_from_artifacts(
+    document_id: str,
+    *,
+    extraction: dict[str, Any] | None = None,
+    match_package: dict[str, Any] | None = None,
+    validation_report: dict[str, Any] | None = None,
+    decision_record: DecisionRecord | dict[str, Any] | None = None,
+    verification: dict[str, Any] | None = None,
+    reconciliation: dict[str, Any] | None = None,
+    routing_status: str | None = None,
+) -> list[NarrativeEntry]:
+    """Rebuild narrative from stored pipeline artifacts (e.g. after stage5_error)."""
+    if decision_record is None:
+        return [
+            NarrativeEntry(
+                step=1,
+                category="buyer_summary",
+                text=f"No payment decision recorded yet for invoice {document_id}.",
+                source_rule_id="NO_DECISION",
+                icon="⏳",
+            )
+        ]
+
+    if isinstance(decision_record, dict):
+        from app.models.decision import DecisionRecord as DR
+
+        decision_record = DR.model_validate(decision_record)
+
+    evidence_summary: list[str] = list(decision_record.evidence_summary or [])
+    if validation_report and validation_report.get("evidence_summary"):
+        evidence_summary = list(validation_report["evidence_summary"])
+
+    return build_narrative(
+        decision_record,
+        extraction=extraction,
+        match_package=match_package,
+        validation_report=validation_report,
+        verification=verification,
+        reconciliation=reconciliation,
+        routing_status=routing_status,
+        evidence_summary=evidence_summary,
+    )
+
+
+def _safe_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _field_display(extraction: dict[str, Any] | None, field_name: str) -> str | None:
+    if not extraction:
+        return None
+    field = extraction.get(field_name)
+    if not isinstance(field, dict):
+        return None
+    val = field.get("value")
+    status = field.get("status", "")
+    if val is None or status == "not_found":
+        return None
+    conf = _safe_number(field.get("confidence"))
+    conf_txt = f" ({conf:.0%} confidence)" if conf is not None else ""
+    return f"{val}{conf_txt}"
+
+
+def _build_stage1_entries(
+    extraction: dict[str, Any] | None,
+    verification: dict[str, Any] | None,
+    reconciliation: dict[str, Any] | None,
+    routing_status: str | None,
+) -> list[NarrativeEntry]:
+    """Human-readable Stage 1 extraction + verification summary."""
+    entries: list[NarrativeEntry] = []
+    if not extraction:
+        return entries
+
+    parts: list[str] = []
+    for label, key in (
+        ("Vendor", "vendor_name"),
+        ("Invoice #", "invoice_number"),
+        ("Invoice date", "invoice_date"),
+        ("PO / reference", "po_reference"),
+        ("Currency", "currency"),
+        ("Total", "total_amount"),
+    ):
+        display = _field_display(extraction, key)
+        if display:
+            parts.append(f"{label}: {display}")
+        else:
+            parts.append(f"{label}: not on document")
+
+    line_items = extraction.get("line_items") or []
+    if line_items:
+        parts.append(f"Line items: {len(line_items)} extracted")
+
+    text = "Stage 1 extraction — " + "; ".join(parts) + "."
+    entries.append(NarrativeEntry(
+        step=0,
+        category="stage1_extraction",
+        text=text,
+        source_rule_id="STAGE1_EXTRACTION",
+        icon="📄",
+    ))
+
+    if verification:
+        v_status = verification.get("verification_status", "unknown")
+        v_conf = _safe_number(verification.get("overall_confidence"))
+        v_text = f"Stage 1 verification — status {v_status}"
+        if v_conf is not None:
+            v_text += f" ({v_conf:.0%} overall confidence)"
+        issues = verification.get("issues") or []
+        actionable = [
+            i for i in issues
+            if isinstance(i, dict) and i.get("severity") in ("high", "medium")
+        ]
+        if actionable:
+            v_text += ". Flags: " + "; ".join(
+                f"{i.get('field')}: {i.get('reason')}" for i in actionable[:3]
+            )
+        entries.append(NarrativeEntry(
+            step=0,
+            category="stage1_verification",
+            text=v_text + ".",
+            source_rule_id="STAGE1_VERIFICATION",
+            icon="🔍",
+        ))
+
+    if reconciliation:
+        r_status = reconciliation.get("overall_status", "unknown")
+        residual = _safe_number(reconciliation.get("residual_amount"))
+        r_text = f"Stage 1 reconciliation — {r_status}"
+        if residual is not None and abs(residual) > 0.01:
+            r_text += f" (residual ${residual:,.2f})"
+        entries.append(NarrativeEntry(
+            step=0,
+            category="stage1_reconciliation",
+            text=r_text + ".",
+            source_rule_id="STAGE1_RECONCILIATION",
+            icon="🧮",
+        ))
+
+    if routing_status:
+        entries.append(NarrativeEntry(
+            step=0,
+            category="stage1_routing",
+            text=f"Stage 1 routing decision: {routing_status.replace('_', ' ')}.",
+            source_rule_id="STAGE1_ROUTING",
+            icon="🚦",
+        ))
+
+    return entries
 
 
 def _decision_icon(decision: str) -> str:

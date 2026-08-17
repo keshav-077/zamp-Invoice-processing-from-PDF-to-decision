@@ -323,6 +323,9 @@ class PipelineOrchestrator:
                                     extraction=extraction,
                                     match_package=match_package,
                                     validation_report=validation_report,
+                                    verification=verification,
+                                    reconciliation=reconciliation,
+                                    routing_status=result.status,
                                 )
                                 result.stage5_result = explanation
                                 result.stage5_status = explanation.explanation_status
@@ -330,11 +333,24 @@ class PipelineOrchestrator:
                                 logger.info(
                                     f"[{document_id}] Stage 5 result: "
                                     f"{explanation.explanation_status} "
-                                    f"({explanation.processing_time_seconds}s)"
+                                    f"({len(explanation.narrative)} steps, "
+                                    f"{explanation.processing_time_seconds}s)"
                                 )
                             except Exception as e:
                                 logger.error(f"[{document_id}] Stage 5 error: {e}", exc_info=True)
-                                result.stage5_status = "stage5_error"
+                                fallback = Stage5Orchestrator().explain(
+                                    document_id=document_id,
+                                    decision_record=decision_record,
+                                    extraction=extraction,
+                                    match_package=match_package,
+                                    validation_report=validation_report,
+                                    verification=verification,
+                                    reconciliation=reconciliation,
+                                    routing_status=result.status,
+                                )
+                                result.stage5_result = fallback
+                                result.stage5_status = fallback.explanation_status or "INCOMPLETE"
+                                result.stage5_explanation_id = fallback.explanation_id
                         if decision_record and result.stage4_status != "stage4_error":
                             result.workflow_state = WorkflowState.COMPLETED.value
                         elif validation_report and validation_report.overall_state == "VALIDATED":

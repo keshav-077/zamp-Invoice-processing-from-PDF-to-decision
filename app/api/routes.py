@@ -415,13 +415,47 @@ async def get_explanation(document_id: str):
 async def get_explanation_narrative(document_id: str):
     """Get the human-readable narrative for an invoice."""
     exp = repository.get_explanation(document_id)
-    if not exp:
+    run = repository.get_run(document_id)
+    if not exp and not run:
         raise HTTPException(status_code=404, detail="No explanation found")
+
+    narrative = (exp or {}).get("narrative_json") or []
+    status = (exp or {}).get("explanation_status", "INCOMPLETE")
+
+    if not narrative and run:
+        from app.models.decision import DecisionRecord
+        from app.pipeline.stage5.narrative_builder import build_narrative_from_artifacts
+
+        decision_history = repository.get_decision_history(document_id)
+        validation_history = repository.get_validation_history(document_id)
+        decision_raw = run.get("stage4_result_json") or (
+            decision_history[0] if decision_history else None
+        )
+        validation_raw = run.get("stage3_result_json") or (
+            validation_history[0] if validation_history else None
+        )
+        if decision_raw:
+            try:
+                decision_record = DecisionRecord.model_validate(decision_raw)
+                narrative = build_narrative_from_artifacts(
+                    document_id,
+                    extraction=run.get("extraction_json"),
+                    match_package=run.get("stage2_result_json"),
+                    validation_report=validation_raw,
+                    decision_record=decision_record,
+                    verification=run.get("verification_json"),
+                    reconciliation=run.get("reconciliation_json"),
+                    routing_status=run.get("status"),
+                )
+                status = "INCOMPLETE" if not exp else status
+            except Exception:
+                pass
+
     return {
         "document_id": document_id,
-        "explanation_status": exp.get("explanation_status"),
-        "narrative": exp.get("narrative_json"),
-        "evidence_summary": exp.get("evidence_summary_json", []),
+        "explanation_status": status,
+        "narrative": narrative,
+        "evidence_summary": (exp or {}).get("evidence_summary_json", []),
     }
 
 

@@ -2,27 +2,69 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { useInvoiceJourney } from '@/contexts/InvoiceJourneyContext'
 import { StageHeader } from '@/components/journey/shared/StageHeader'
-import { SectionCard, IssuesPanel } from '@/components/journey/shared/SectionCard'
+import { SectionCard, IssuesPanel, MetricRow } from '@/components/journey/shared/SectionCard'
 import { StaggerSection } from '@/components/journey/shared/AnimatedStageContent'
 import { getStage5Summary } from '@/lib/stageSummary'
 import { fetchAuditReconstruct } from '@/lib/api/audit'
-import { coalesceDict } from '@/lib/normalize'
+import { fetchExplanationNarrative } from '@/lib/api/audit'
+import { coalesceDict, num } from '@/lib/normalize'
 import { Badge } from '@/components/ui/badge'
-import type { NarrativeEntry } from '@/types'
+import type { FieldExtraction, NarrativeEntry } from '@/types'
+
+function fieldVal(f: FieldExtraction | undefined): string {
+  if (!f?.value) return '—'
+  return String(f.value)
+}
+
+function categoryLabel(category: string): string {
+  const labels: Record<string, string> = {
+    buyer_summary: 'Decision summary',
+    stage1_extraction: 'Stage 1 — Extraction',
+    stage1_verification: 'Stage 1 — Verification',
+    stage1_reconciliation: 'Stage 1 — Reconciliation',
+    stage1_routing: 'Stage 1 — Routing',
+    po_match: 'Stage 2 — PO match',
+    validation: 'Stage 3 — Validation',
+    decision_summary: 'Stage 4 — Decision',
+    reason_explanation: 'Why flagged',
+    rule_evaluation: 'Rules evaluated',
+    policy: 'Payment policy',
+    authority: 'Approval authority',
+    routing: 'Routing',
+    evidence_trail: 'Evidence trail',
+    stage5_notice: 'Notice',
+  }
+  return labels[category] || category.replace(/_/g, ' ')
+}
 
 export function Stage5View() {
   const { result } = useInvoiceJourney()
   const summary = getStage5Summary(result)
   const stage5 = coalesceDict(result.stage5_result)
-  const narrative = (stage5.narrative ?? []) as NarrativeEntry[]
+  const inlineNarrative = (stage5.narrative ?? []) as NarrativeEntry[]
+
+  const narrativeQuery = useQuery({
+    queryKey: ['narrative', result.document_id],
+    queryFn: () => fetchExplanationNarrative(result.document_id),
+    enabled: inlineNarrative.length === 0 && Boolean(result.document_id),
+  })
 
   const auditQuery = useQuery({
     queryKey: ['audit', result.document_id],
     queryFn: () => fetchAuditReconstruct(result.document_id),
   })
 
+  const narrative =
+    inlineNarrative.length > 0
+      ? inlineNarrative
+      : ((narrativeQuery.data?.narrative ?? []) as NarrativeEntry[])
+
   const gaps = stage5.gaps ?? []
   const controls = stage5.control_verifications ?? []
+  const ext = result.extraction
+  const stage2 = coalesceDict(result.stage2_result)
+  const stage3 = coalesceDict(result.stage3_result)
+  const stage4 = coalesceDict(result.stage4_result)
 
   return (
     <div>
@@ -32,10 +74,16 @@ export function Stage5View() {
         <SectionCard title="Explanation record">
           <div className="flex flex-wrap gap-3 text-sm">
             <Badge variant={summary.outcome === 'pass' ? 'success' : 'warning'}>
-              {result.stage5_status || stage5.explanation_status}
+              {result.stage5_status || stage5.explanation_status || narrativeQuery.data?.explanation_status}
             </Badge>
             {result.stage5_explanation_id && (
               <span className="text-muted">ID: {result.stage5_explanation_id}</span>
+            )}
+            {stage4.decision && (
+              <span className="text-muted">
+                Decision: {stage4.decision}
+                {stage4.decision_substate ? ` / ${stage4.decision_substate}` : ''}
+              </span>
             )}
             {auditQuery.data && (
               <span className="text-muted">
@@ -46,39 +94,68 @@ export function Stage5View() {
         </SectionCard>
       </StaggerSection>
 
+      <StaggerSection index={1}>
+        <SectionCard title="Data used in this decision" description="Extracted and matched values from the database">
+          <MetricRow
+            metrics={[
+              { label: 'Vendor', value: fieldVal(ext?.vendor_name) },
+              { label: 'Total', value: fieldVal(ext?.total_amount) },
+              { label: 'PO reference', value: fieldVal(ext?.po_reference) },
+              { label: 'Stage 2', value: result.stage2_status || stage2.match_status || '—' },
+              { label: 'Stage 3', value: result.stage3_status || stage3.overall_state || '—' },
+              { label: 'Stage 4', value: result.stage4_status || stage4.decision_substate || '—' },
+            ]}
+          />
+          {ext?.line_items && ext.line_items.length > 0 && (
+            <p className="mt-3 text-sm text-muted">
+              {ext.line_items.length} line item(s) extracted
+              {num(ext.total_amount?.confidence) > 0
+                ? ` · extraction confidence ${Math.round(num(ext.total_amount?.confidence) * 100)}% on total`
+                : ''}
+            </p>
+          )}
+        </SectionCard>
+      </StaggerSection>
+
       <div className="mt-8 space-y-8">
-        <StaggerSection index={1}>
-          <SectionCard title="Why this decision was made" description="Deterministic narrative from rule engine">
+        <StaggerSection index={2}>
+          <SectionCard
+            title="Why this decision was made"
+            description="Step-by-step explanation across all pipeline stages"
+          >
+            {narrativeQuery.isLoading && !narrative.length && (
+              <p className="text-sm text-muted">Loading explanation from stored pipeline data…</p>
+            )}
             <ol className="relative space-y-0 border-l border-border pl-6">
               {narrative.map((entry, i) => (
                 <motion.li
-                  key={i}
+                  key={`${entry.source_rule_id}-${i}`}
                   className="relative pb-8 last:pb-0"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.08, duration: 0.3 }}
+                  transition={{ delay: i * 0.05, duration: 0.3 }}
                 >
                   <span className="absolute -left-[25px] top-1 h-3 w-3 rounded-full border-2 border-accent bg-background" />
-                  <p className="text-sm leading-relaxed">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                    {categoryLabel(entry.category)}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed">
                     {entry.icon ? `${entry.icon} ` : ''}
                     {entry.text}
                   </p>
-                  {entry.source_rule_id && (
-                    <p className="mt-1 text-xs text-muted">
-                      {entry.source_rule_id} · {entry.category}
-                    </p>
-                  )}
                 </motion.li>
               ))}
-              {!narrative.length && (
-                <p className="text-sm text-muted">No narrative steps recorded.</p>
+              {!narrative.length && !narrativeQuery.isLoading && (
+                <p className="text-sm text-muted">
+                  No narrative steps recorded. Re-run the pipeline or open Technical audit below for raw stage JSON.
+                </p>
               )}
             </ol>
           </SectionCard>
         </StaggerSection>
 
         {gaps.length > 0 && (
-          <StaggerSection index={2}>
+          <StaggerSection index={3}>
             <IssuesPanel
               issues={gaps.map((g) => `Stage ${g.stage}: ${g.reason}`)}
             />
@@ -86,7 +163,7 @@ export function Stage5View() {
         )}
 
         {controls.length > 0 && (
-          <StaggerSection index={3}>
+          <StaggerSection index={4}>
             <SectionCard title="Control verifications">
               <ul className="space-y-2 text-sm">
                 {controls.map((c) => (
@@ -100,7 +177,7 @@ export function Stage5View() {
           </StaggerSection>
         )}
 
-        <StaggerSection index={4}>
+        <StaggerSection index={5}>
           <details className="rounded-2xl border border-border bg-surface p-4">
             <summary className="cursor-pointer text-sm font-medium text-muted">
               Technical audit (full JSON)
