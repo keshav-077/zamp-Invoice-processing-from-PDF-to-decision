@@ -1641,32 +1641,48 @@ MASTER_DATA_TABLES = [
     "vendors",
 ]
 
+# Full wipe — child tables first for SQLite DELETE order
+ALL_DATA_TABLES = [
+    "processing_jobs",
+    "extraction_feedback",
+    "po_confirmations",
+    "audit_ledger",
+    "explanation_snapshots",
+    "decision_records",
+    "validation_runs",
+    "po_match_results",
+    "invoice_allocations",
+    "review_work_items",
+    "invoice_runs",
+    *MASTER_DATA_TABLES,
+    "companies",
+]
 
-def clear_master_data(company_id: str | None = None) -> dict:
-    """
-    Remove all PO master, vendor, import staging, and source_records data.
 
-    Does not delete invoice_runs or pipeline audit history unless include_invoices=True.
-    Re-seeding demo PO.xlsx data is never performed — upload your file after clearing.
-    """
-    conn = get_connection()
-    cleared: dict[str, int] = {}
+def _count_table(conn, table: str) -> int:
+    row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+    return int(row["n"] if isinstance(row, dict) else row[0])
 
-    for table in MASTER_DATA_TABLES:
+
+def _delete_tables(conn, tables: list[str], company_id: str | None = None) -> dict[str, int]:
+    """Delete rows table-by-table; returns remaining row counts."""
+    remaining: dict[str, int] = {}
+    company_scoped = {
+        "vendors",
+        "purchase_orders",
+        "po_lines",
+        "grn_records",
+        "po_references",
+        "source_records",
+        "master_data_imports",
+        "import_staging_batches",
+        "import_staging_rows",
+        "mapping_profiles",
+        "vendor_profiles",
+    }
+    for table in tables:
         try:
-            if company_id and table in {
-                "vendors",
-                "purchase_orders",
-                "po_lines",
-                "grn_records",
-                "po_references",
-                "source_records",
-                "master_data_imports",
-                "import_staging_batches",
-                "import_staging_rows",
-                "mapping_profiles",
-                "vendor_profiles",
-            }:
+            if company_id and table in company_scoped:
                 if table == "import_staging_rows":
                     conn.execute(
                         """
@@ -1690,17 +1706,82 @@ def clear_master_data(company_id: str | None = None) -> dict:
                     )
             else:
                 conn.execute(f"DELETE FROM {table}")
-            row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
-            remaining = row["n"] if isinstance(row, dict) else row[0]
-            cleared[table] = remaining
+            remaining[table] = _count_table(conn, table)
         except Exception as exc:
-            logger.warning("clear_master_data: %s — %s", table, exc)
+            logger.warning("clear data: %s — %s", table, exc)
             if hasattr(conn, "rollback"):
                 conn.rollback()
-
+            remaining[table] = -1
     conn.commit()
+    return remaining
+
+
+def clear_master_data(company_id: str | None = None) -> dict:
+    """
+    Remove all PO master, vendor, import staging, and source_records data.
+
+    Does not delete invoice_runs or pipeline audit history.
+    Re-seeding demo PO.xlsx data is never performed — upload your file after clearing.
+    """
+    conn = get_connection()
+    remaining = _delete_tables(conn, MASTER_DATA_TABLES, company_id=company_id)
     logger.info("Master data cleared (company_id=%s)", company_id or "ALL")
-    return {"cleared": True, "company_id": company_id, "remaining_rows": cleared}
+    return {"cleared": True, "scope": "master", "company_id": company_id, "remaining_rows": remaining}
+
+
+def clear_all_data(company_id: str | None = None) -> dict:
+    """
+    Wipe every application table — invoices, jobs, audit trail, master data, imports.
+
+    Never re-seeds demo PO.xlsx data.
+    """
+    conn = get_connection()
+    if is_postgres() and not company_id:
+        existing = [t for t in ALL_DATA_TABLES if _table_exists(conn, t)]
+        if existing:
+            try:
+                conn.execute(
+                    f"TRUNCATE TABLE {', '.join(existing)} RESTART IDENTITY CASCADE"
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.warning("TRUNCATE failed, falling back to DELETE: %s", exc)
+                if hasattr(conn, "rollback"):
+                    conn.rollback()
+                remaining = _delete_tables(conn, ALL_DATA_TABLES, company_id=None)
+                return {
+                    "cleared": True,
+                    "scope": "all",
+                    "company_id": None,
+                    "remaining_rows": remaining,
+                }
+        remaining = {t: _count_table(conn, t) for t in ALL_DATA_TABLES if _table_exists(conn, t)}
+    else:
+        remaining = _delete_tables(conn, ALL_DATA_TABLES, company_id=company_id)
+
+    logger.info("All data cleared (company_id=%s)", company_id or "ALL")
+    return {"cleared": True, "scope": "all", "company_id": company_id, "remaining_rows": remaining}
+
+
+def _table_exists(conn, table: str) -> bool:
+    try:
+        if is_postgres():
+            row = conn.execute(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = ?
+                LIMIT 1
+                """,
+                (table,),
+            ).fetchone()
+            return row is not None
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            (table,),
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
 
 
 def create_master_data_import(

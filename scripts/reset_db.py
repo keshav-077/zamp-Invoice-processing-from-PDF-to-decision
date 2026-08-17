@@ -20,33 +20,7 @@ from app.db.database import close_db, init_db, get_connection, _is_postgres, sca
 from app.db import repository  # noqa: E402
 from app.db.seed_data import seed_database  # noqa: E402
 
-# Child tables first (Postgres DELETE order) — full wipe including invoice history
-_TRUNCATE_TABLES = [
-    "processing_jobs",
-    "extraction_feedback",
-    "po_confirmations",
-    "human_actions",
-    "audit_ledger",
-    "explanation_snapshots",
-    "decision_records",
-    "validation_runs",
-    "po_match_results",
-    "invoice_allocations",
-    "invoice_runs",
-    "review_work_items",
-    *repository.MASTER_DATA_TABLES,
-    "companies",
-]
-
-
-def _clear_postgres_data(conn) -> None:
-    for table in _TRUNCATE_TABLES:
-        try:
-            conn.execute(f"DELETE FROM {table}")
-        except Exception:
-            if hasattr(conn, "rollback"):
-                conn.rollback()
-    conn.commit()
+# Full wipe uses repository.ALL_DATA_TABLES
 
 
 def reset(clear_only: bool = False) -> None:
@@ -63,7 +37,7 @@ def reset(clear_only: bool = False) -> None:
                 repository.clear_master_data()
                 print(f"Cleared master data only ({settings.database_url[:40]}...)")
             else:
-                _clear_postgres_data(conn)
+                repository.clear_all_data()
                 print(f"Cleared Postgres tables ({settings.database_url[:40]}...)")
             if not clear_only:
                 seed_database()

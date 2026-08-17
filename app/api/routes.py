@@ -732,18 +732,21 @@ async def activate_staged_import(batch_id: str, company_id: str = Query("DEFAULT
 async def clear_master_data(
     request: Request,
     company_id: str = Query("DEFAULT"),
+    scope: str = Query("master", pattern="^(master|all)$"),
     _user: dict | None = Depends(optional_auth),
 ):
-    """Delete all PO master, vendor, import staging, and source_records (no demo re-seed)."""
+    """Delete master data, or entire database when scope=all (no demo re-seed)."""
     await rate_limit(request, bucket="import", limit=5)
     from app.context.tenant import set_company_id
 
     set_company_id(company_id)
-    result = repository.clear_master_data(company_id=company_id)
-    return {
-        "message": "Master data cleared. Re-upload your PO master file.",
-        **result,
-    }
+    if scope == "all":
+        result = repository.clear_all_data(company_id=None if company_id == "DEFAULT" else company_id)
+        message = "All data cleared (invoices, jobs, master data, imports)."
+    else:
+        result = repository.clear_master_data(company_id=company_id)
+        message = "Master data cleared. Re-upload your PO master file."
+    return {"message": message, **result}
 
 
 @router.get("/master-data/imports")

@@ -1,9 +1,9 @@
 """
-Clear PO master, vendors, imports, and source_records — does NOT re-seed demo data.
+Clear PO master / imports, or wipe the entire database (no demo re-seed).
 
 Usage (from invoiceflow-ai/):
-  python scripts/clear_master_data.py
-  python scripts/clear_master_data.py --company-id DEFAULT
+  python scripts/clear_master_data.py              # master tables only
+  python scripts/clear_master_data.py --all        # everything (invoices, jobs, audit, master)
 
 Uses DATABASE_URL (Neon) when set in .env, otherwise local SQLite.
 """
@@ -23,7 +23,8 @@ from app.db import repository  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Clear master data (no demo re-seed)")
+    parser = argparse.ArgumentParser(description="Clear database (no demo re-seed)")
+    parser.add_argument("--all", action="store_true", help="Wipe all tables including invoice history")
     parser.add_argument("--company-id", default=None, help="Scope delete to one company")
     args = parser.parse_args()
 
@@ -34,13 +35,19 @@ def main() -> None:
     init_db()
 
     backend = "Postgres" if settings.database_url else "SQLite"
-    print(f"Clearing master data on {backend}...")
-    result = repository.clear_master_data(company_id=args.company_id)
+    if args.all:
+        print(f"Wiping ALL data on {backend}...")
+        repository.clear_all_data(company_id=args.company_id)
+    else:
+        print(f"Clearing master data on {backend}...")
+        repository.clear_master_data(company_id=args.company_id)
+
     conn = get_connection()
     vendors = scalar_row(conn.execute("SELECT COUNT(*) FROM vendors").fetchone())
     pos = scalar_row(conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone())
     src = scalar_row(conn.execute("SELECT COUNT(*) FROM source_records").fetchone())
-    print(f"Done. Remaining: {vendors} vendors, {pos} POs, {src} source records")
+    invoices = scalar_row(conn.execute("SELECT COUNT(*) FROM invoice_runs").fetchone())
+    print(f"Done. Remaining: {vendors} vendors, {pos} POs, {src} source records, {invoices} invoices")
     print("Re-upload your master data file in Master Data Import.")
 
 
