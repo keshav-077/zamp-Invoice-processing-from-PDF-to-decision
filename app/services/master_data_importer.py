@@ -83,18 +83,9 @@ def _normalize_columns(df: pd.DataFrame, alias_map: dict[str, list[str]]) -> pd.
 
 
 def _parse_file(content: bytes, filename: str) -> dict[str, pd.DataFrame]:
-    ext = filename.lower().rsplit(".", 1)[-1]
-    if ext in ("xlsx", "xls"):
-        xl = pd.ExcelFile(io.BytesIO(content))
-        sheets: dict[str, pd.DataFrame] = {}
-        for name in xl.sheet_names:
-            key = name.strip().lower().replace(" ", "_")
-            sheets[key] = xl.parse(name)
-        return sheets
-    if ext == "csv":
-        df = pd.read_csv(io.BytesIO(content))
-        return {"data": df}
-    raise ValueError(f"Unsupported file type: .{ext}")
+    from app.services.upload_files import parse_upload_workbook
+
+    return parse_upload_workbook(content, filename)
 
 
 def _sheet(df_map: dict[str, pd.DataFrame], *names: str) -> pd.DataFrame | None:

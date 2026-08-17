@@ -11,6 +11,7 @@ import pandas as pd
 
 from app.pipeline.policy_loader import load_import_mapping
 from app.services.json_safe import json_safe, records_json_safe
+from app.services.upload_files import parse_upload_workbook
 
 
 def file_checksum(content: bytes) -> str:
@@ -31,16 +32,7 @@ def normalize_header(name: str) -> str:
 
 
 def parse_workbook(content: bytes, filename: str) -> dict[str, pd.DataFrame]:
-    ext = filename.lower().rsplit(".", 1)[-1]
-    if ext in ("xlsx", "xls"):
-        xl = pd.ExcelFile(io.BytesIO(content))
-        return {
-            re.sub(r"\s+", "_", name.strip().lower()): xl.parse(name)
-            for name in xl.sheet_names
-        }
-    if ext == "csv":
-        return {"data": pd.read_csv(io.BytesIO(content))}
-    raise ValueError(f"Unsupported file type: .{ext}")
+    return parse_upload_workbook(content, filename)
 
 
 def infer_entity_from_sheet(sheet_key: str, columns: list[str]) -> str | None:

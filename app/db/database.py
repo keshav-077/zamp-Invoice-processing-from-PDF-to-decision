@@ -528,7 +528,11 @@ def _migrate_columns(conn) -> None:
     # Ensure default company exists for company-scoped master data
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO companies (company_id, name, created_at) VALUES (?, ?, datetime('now'))",
+            """
+            INSERT INTO companies (company_id, name, created_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(company_id) DO NOTHING
+            """,
             ("DEFAULT", "Default Company"),
         )
     except Exception:

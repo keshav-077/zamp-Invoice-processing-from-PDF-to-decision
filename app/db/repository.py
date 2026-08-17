@@ -1236,7 +1236,11 @@ def update_po_previously_invoiced(po_number: str, amount: float) -> None:
 def ensure_company(company_id: str, name: str) -> None:
     conn = get_connection()
     conn.execute(
-        "INSERT OR IGNORE INTO companies (company_id, name, created_at) VALUES (?, ?, ?)",
+        """
+        INSERT INTO companies (company_id, name, created_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(company_id) DO NOTHING
+        """,
         (company_id, name, datetime.utcnow().isoformat()),
     )
     conn.commit()

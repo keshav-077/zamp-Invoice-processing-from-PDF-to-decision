@@ -23,6 +23,7 @@ from app.storage.storage_service import get_storage
 from app.jobs.job_service import create_job
 from app.deploy import evaluate_deploy_readiness
 from app.jobs.inngest_handler import schedule_invoice_job
+from app.services.upload_files import SUPPORTED_UPLOAD_EXTENSIONS, resolve_upload_extension
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["invoices"])
@@ -592,6 +593,16 @@ async def upsert_vendor_profile(vendor_id: str, body: dict):
 # ═══════════════════════════════════════════════════════════
 
 
+def _validate_master_data_upload(filename: str | None) -> str:
+    if not filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    ext = resolve_upload_extension(filename)
+    if ext not in SUPPORTED_UPLOAD_EXTENSIONS:
+        supported = ", ".join(SUPPORTED_UPLOAD_EXTENSIONS)
+        raise HTTPException(status_code=400, detail=f"Supported: {supported}")
+    return ext
+
+
 @router.post("/master-data/preview")
 async def preview_master_data(
     request: Request,
@@ -601,19 +612,19 @@ async def preview_master_data(
 ):
     """Validate and preview PO master data import without committing."""
     await rate_limit(request, bucket="import", limit=20)
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-    ext = Path(file.filename).suffix.lower()
-    if ext not in (".csv", ".xlsx", ".xls"):
-        raise HTTPException(status_code=400, detail="Supported: .csv, .xlsx, .xls")
+    _validate_master_data_upload(file.filename)
 
     from app.context.tenant import set_company_id
     from app.services.master_data_importer import MasterDataImporter
 
     set_company_id(company_id)
-    content = await file.read()
-    result = MasterDataImporter().preview(content, file.filename, company_id=company_id)
-    return result
+    try:
+        content = await file.read()
+        result = MasterDataImporter().preview(content, file.filename, company_id=company_id)
+        return result
+    except Exception as exc:
+        logger.exception("Master data preview failed")
+        raise HTTPException(status_code=500, detail=f"Preview failed: {exc}") from exc
 
 
 @router.post("/master-data/import")
@@ -625,11 +636,7 @@ async def import_master_data(
 ):
     """Import PO master data (vendors, POs, lines, GRN, references)."""
     await rate_limit(request, bucket="import", limit=10)
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-    ext = Path(file.filename).suffix.lower()
-    if ext not in (".csv", ".xlsx", ".xls"):
-        raise HTTPException(status_code=400, detail="Supported: .csv, .xlsx, .xls")
+    _validate_master_data_upload(file.filename)
 
     from app.context.tenant import set_company_id
     from app.services.master_data_importer import MasterDataImporter
@@ -654,8 +661,7 @@ async def confirm_master_data_import(
 ):
     """Confirm ambiguous column mappings and commit import."""
     await rate_limit(request, bucket="import", limit=10)
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+    _validate_master_data_upload(file.filename)
 
     from app.context.tenant import set_company_id
     from app.services.master_data_importer import MasterDataImporter

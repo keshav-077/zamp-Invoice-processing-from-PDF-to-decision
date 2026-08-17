@@ -17,7 +17,23 @@ const API_BASE = resolveApiBase()
 const UPLOAD_TIMEOUT = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS ?? 300000)
 
 function formatApiDetail(detail: unknown, fallback: string): string {
-  if (typeof detail === 'string') return detail
+  if (typeof detail === 'string') return detail || fallback
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const row = item as { msg?: string; message?: string; loc?: unknown[] }
+          const loc = Array.isArray(row.loc) ? row.loc.join('.') : ''
+          const msg = row.msg ?? row.message
+          if (msg && loc) return `${loc}: ${msg}`
+          if (msg) return msg
+        }
+        return null
+      })
+      .filter(Boolean)
+    if (msgs.length > 0) return msgs.slice(0, 3).join('; ')
+  }
   if (detail && typeof detail === 'object') {
     const obj = detail as Record<string, unknown>
     const errors = obj.errors
@@ -28,7 +44,7 @@ function formatApiDetail(detail: unknown, fallback: string): string {
     }
     if (typeof obj.message === 'string') return obj.message
   }
-  return fallback
+  return fallback || 'Request failed'
 }
 
 export class ApiError extends Error {

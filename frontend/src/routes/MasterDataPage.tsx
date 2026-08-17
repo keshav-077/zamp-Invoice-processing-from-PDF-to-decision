@@ -123,7 +123,7 @@ export function MasterDataPage() {
           : err.message === 'Failed to fetch'
             ? 'Could not reach the API — ensure the backend is running on port 8000'
             : err.message
-      toast.error(msg)
+      toast.error(msg || 'Preview failed — check the file format (.csv, .xlsx)')
     },
   })
 
