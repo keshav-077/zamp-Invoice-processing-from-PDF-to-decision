@@ -119,7 +119,9 @@ class PipelineOrchestrator:
                         self.input_handler.score_document_quality(img)
                         for img in all_page_images
                     ]
-                    result.document_quality_score = round(sum(scores) / len(scores), 3)
+                    result.document_quality_score = float(
+                        round(sum(scores) / len(scores), 3)
+                    )
             except InputValidationError as e:
                 result.status = "extraction_failed"
                 result.error_details = f"Input validation failed: {e}"

@@ -221,7 +221,9 @@ class InputHandler:
         mean_brightness = float(np.mean(img)) / 255.0
         brightness_score = 1.0 - abs(mean_brightness - 0.5) * 2
 
-        return round((blur_score * 0.5 + contrast_score * 0.3 + brightness_score * 0.2), 3)
+        return float(
+            round((blur_score * 0.5 + contrast_score * 0.3 + brightness_score * 0.2), 3)
+        )
 
     def _denoise(self, img: np.ndarray, page_num: int) -> np.ndarray:
         """Apply fast non-local means denoising for noisy scans."""
