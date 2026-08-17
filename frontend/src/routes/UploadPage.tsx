@@ -12,9 +12,7 @@ import { useJobProgress } from '@/hooks/useJobProgress'
 import { useAnimatedPipelineProgress } from '@/hooks/useAnimatedPipelineProgress'
 import { formatApiErrorMessage } from '@/lib/api/client'
 
-const USE_ASYNC_JOBS =
-  import.meta.env.VITE_USE_ASYNC_JOBS === 'true' ||
-  (import.meta.env.VITE_USE_ASYNC_JOBS !== 'false' && import.meta.env.PROD)
+const USE_ASYNC_JOBS = import.meta.env.VITE_USE_ASYNC_JOBS === 'true'
 
 export function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
@@ -146,8 +144,8 @@ export function UploadPage() {
             stageStatuses={stageStatuses}
             error={pipelineError ?? null}
             statusMessage={
-              jobProgress.isRunning
-                ? 'Running Stages 1–5 on the server — large invoices can take 1–3 minutes on first load.'
+              (USE_ASYNC_JOBS && jobProgress.isRunning) || syncMutation.isPending
+                ? 'Processing on the server — first run can take 1–3 minutes. Please keep this tab open.'
                 : null
             }
           />

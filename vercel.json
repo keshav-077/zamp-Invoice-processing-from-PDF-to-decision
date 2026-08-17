@@ -19,7 +19,7 @@
   "build": {
     "env": {
       "VITE_API_BASE_URL": "/api",
-      "VITE_USE_ASYNC_JOBS": "true",
+      "VITE_USE_ASYNC_JOBS": "false",
       "VITE_UPLOAD_TIMEOUT_MS": "300000"
     }
   }

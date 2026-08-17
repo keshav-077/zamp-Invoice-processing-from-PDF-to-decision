@@ -21,14 +21,14 @@ export function useAnimatedPipelineProgress(isProcessing: boolean, isSuccess: bo
     }
 
     if (isProcessing) {
+      setActiveStage(1)
       setStageStatuses((prev) => {
         const next = [...prev] as RailStageStatus[]
-        next[activeStage - 1] = 'active'
-        for (let i = 0; i < activeStage - 1; i++) next[i] = 'done'
+        next[0] = 'active'
         return next
       })
     }
-  }, [isProcessing, activeStage])
+  }, [isProcessing])
 
   useEffect(() => {
     if (!isProcessing) return

@@ -76,7 +76,9 @@ export function useJobProgress(jobId: string | null, enabled: boolean) {
       } catch (e) {
         pollErrors += 1
         if (!cancelled && pollErrors >= MAX_POLL_ERRORS) {
-          setError(formatApiErrorMessage(e, 'Could not check job status'))
+          setError(
+            formatApiErrorMessage(e, 'Lost connection while checking progress — try refreshing'),
+          )
           return false
         }
         return true

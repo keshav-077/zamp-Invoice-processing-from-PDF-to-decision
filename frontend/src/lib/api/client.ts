@@ -51,8 +51,9 @@ function formatApiDetail(detail: unknown, fallback: string): string {
       return obj.error_message.trim()
     }
   }
-  const fb = (fallback || 'Request failed').trim()
-  return fb || 'Request failed'
+  const fb = (fallback || '').trim()
+  if (fb && fb.toLowerCase() !== 'request failed') return fb
+  return 'Server error — unexpected response'
 }
 
 /** User-facing message for any API or network failure — never returns an empty string. */
@@ -134,7 +135,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       }
       const message =
         formatApiDetail(payload ?? detail, detail).trim() ||
-        `Request failed (HTTP ${response.status})`
+        (response.status > 0
+          ? `Server error (HTTP ${response.status})`
+          : 'Server error — no response from API')
       throw new ApiError(response.status, message, payload)
     }
 
