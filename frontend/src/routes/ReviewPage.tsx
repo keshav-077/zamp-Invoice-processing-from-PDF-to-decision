@@ -8,7 +8,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fetchExceptionAnalytics, fetchReviews, submitReviewAction } from '@/lib/api/reviews'
 import { Link } from 'react-router-dom'
-import { ApiError } from '@/lib/api/client'
+import { formatApiErrorMessage } from '@/lib/api/client'
 
 const ACTIONS = ['APPROVE', 'REJECT', 'COMMENT', 'OVERRIDE']
 
@@ -93,7 +93,7 @@ function ReviewItemCard({
       onSubmitted()
     },
     onError: (e: Error) => {
-      toast.error(e instanceof ApiError ? e.detail : e.message)
+      toast.error(formatApiErrorMessage(e, 'Review action failed'))
     },
   })
 

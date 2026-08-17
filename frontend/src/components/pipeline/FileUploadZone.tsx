@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Upload } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -33,7 +34,7 @@ export function FileUploadZone({ file, onFileSelect, disabled }: FileUploadZoneP
     }
     const err = validate(f)
     if (err) {
-      alert(err)
+      toast.error(err)
       return
     }
     onFileSelect(f)

@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from app.db.database import get_connection
+from app.db.sql_dialect import build_upsert_sql
 from app.models.pipeline import PipelineResult
 
 logger = logging.getLogger(__name__)
@@ -18,22 +19,40 @@ logger = logging.getLogger(__name__)
 def save_run(result: PipelineResult, company_id: str = "DEFAULT") -> None:
     """Save a complete pipeline result to the database."""
     conn = get_connection()
-
+    columns = [
+        "document_id",
+        "filename",
+        "status",
+        "upload_timestamp",
+        "processing_time_seconds",
+        "pages_json",
+        "extraction_json",
+        "verification_json",
+        "arithmetic_json",
+        "reconciliation_json",
+        "document_quality_score",
+        "decision",
+        "decision_explanation_json",
+        "retry_count",
+        "error_details",
+        "original_file_path",
+        "stage2_result_json",
+        "stage2_status",
+        "stage3_result_json",
+        "stage3_status",
+        "stage4_result_json",
+        "stage4_status",
+        "stage4_decision",
+        "stage5_result_json",
+        "stage5_status",
+        "stage5_explanation_id",
+        "company_id",
+        "evidence_profile_json",
+        "extraction_quality",
+        "workflow_state",
+    ]
     conn.execute(
-        """
-        INSERT OR REPLACE INTO invoice_runs (
-            document_id, filename, status, upload_timestamp,
-            processing_time_seconds, pages_json, extraction_json,
-            verification_json, arithmetic_json, reconciliation_json,
-            document_quality_score, decision,
-            decision_explanation_json, retry_count, error_details,
-            original_file_path, stage2_result_json, stage2_status,
-            stage3_result_json, stage3_status,
-            stage4_result_json, stage4_status, stage4_decision,
-            stage5_result_json, stage5_status, stage5_explanation_id,
-            company_id, evidence_profile_json, extraction_quality, workflow_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        build_upsert_sql("invoice_runs", columns, ["document_id"]),
         (
             result.document_id,
             result.filename,
@@ -372,11 +391,11 @@ def save_match_result(document_id: str, match_status: str, match_package_json: s
     """Save a Stage 2 match result to the audit trail."""
     conn = get_connection()
     conn.execute(
-        """
-        INSERT OR REPLACE INTO po_match_results
-        (document_id, match_status, match_package_json, matched_at)
-        VALUES (?, ?, ?, ?)
-        """,
+        build_upsert_sql(
+            "po_match_results",
+            ["document_id", "match_status", "match_package_json", "matched_at"],
+            ["document_id"],
+        ),
         (document_id, match_status, match_package_json, datetime.utcnow().isoformat()),
     )
     conn.commit()
@@ -432,15 +451,26 @@ def save_validation_run(
 ) -> None:
     """Save a Stage 3 validation run to the audit trail."""
     conn = get_connection()
+    vr_columns = [
+        "validation_run_id",
+        "document_id",
+        "processing_state",
+        "overall_state",
+        "reason_codes_json",
+        "checks_json",
+        "controls_json",
+        "evidence_json",
+        "fraud_signals_json",
+        "policy_version",
+        "source_snapshots_json",
+        "started_at",
+        "completed_at",
+        "parent_run_id",
+        "trigger",
+        "report_json",
+    ]
     conn.execute(
-        """
-        INSERT OR REPLACE INTO validation_runs
-        (validation_run_id, document_id, processing_state, overall_state,
-         reason_codes_json, checks_json, controls_json, evidence_json,
-         fraud_signals_json, policy_version, source_snapshots_json,
-         started_at, completed_at, parent_run_id, trigger, report_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        build_upsert_sql("validation_runs", vr_columns, ["validation_run_id"]),
         (
             validation_run_id, document_id, "COMPLETED", overall_state,
             reason_codes_json, checks_json, controls_json, evidence_json,
@@ -540,15 +570,27 @@ def save_decision_record(
 ) -> None:
     """Save a Stage 4 decision record to the audit trail."""
     conn = get_connection()
+    dec_columns = [
+        "decision_id",
+        "document_id",
+        "validation_run_id",
+        "decision",
+        "decision_substate",
+        "reason_codes_json",
+        "rules_json",
+        "policy_json",
+        "authority_json",
+        "routing_json",
+        "trace_json",
+        "evidence_refs_json",
+        "evidence_summary_json",
+        "decided_at",
+        "engine_version",
+        "processing_time_seconds",
+        "record_json",
+    ]
     conn.execute(
-        """
-        INSERT OR REPLACE INTO decision_records
-        (decision_id, document_id, validation_run_id, decision, decision_substate,
-         reason_codes_json, rules_json, policy_json, authority_json, routing_json,
-         trace_json, evidence_refs_json, evidence_summary_json, decided_at,
-         engine_version, processing_time_seconds, record_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        build_upsert_sql("decision_records", dec_columns, ["decision_id"]),
         (
             decision_id, document_id, validation_run_id, decision, decision_substate,
             reason_codes_json, rules_json, policy_json, authority_json, routing_json,
@@ -640,19 +682,34 @@ def save_explanation(
 ) -> None:
     """Save a Stage 5 explanation snapshot."""
     conn = get_connection()
+    exp_columns = [
+        "explanation_id",
+        "tenant_id",
+        "decision_id",
+        "invoice_id",
+        "explanation_status",
+        "narrative_json",
+        "rule_trace_json",
+        "routing_json",
+        "authority_json",
+        "control_verification_json",
+        "evidence_refs_json",
+        "evidence_summary_json",
+        "gaps_json",
+        "upstream_artifacts_json",
+        "policy_version",
+        "policy_hash",
+        "decision_outcome",
+        "decision_substate",
+        "integrity_json",
+        "sampling_json",
+        "snapshot_json",
+        "generated_at",
+        "engine_version",
+        "processing_time_seconds",
+    ]
     conn.execute(
-        """
-        INSERT OR REPLACE INTO explanation_snapshots
-        (explanation_id, tenant_id, decision_id, invoice_id,
-         explanation_status, narrative_json, rule_trace_json,
-         routing_json, authority_json, control_verification_json,
-         evidence_refs_json, evidence_summary_json, gaps_json,
-         upstream_artifacts_json, policy_version, policy_hash,
-         decision_outcome, decision_substate, integrity_json,
-         sampling_json, snapshot_json, generated_at, engine_version,
-         processing_time_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        build_upsert_sql("explanation_snapshots", exp_columns, ["explanation_id"]),
         (
             explanation_id, tenant_id, decision_id, invoice_id,
             explanation_status, narrative_json, rule_trace_json,
@@ -846,13 +903,23 @@ def save_review_work_item(item) -> None:
     if not isinstance(item, ReviewWorkItem):
         item = ReviewWorkItem.model_validate(item)
     conn = get_connection()
+    rw_columns = [
+        "work_item_id",
+        "document_id",
+        "queue",
+        "reason_codes_json",
+        "priority",
+        "sla_due_at",
+        "status",
+        "assigned_to",
+        "stage1_status",
+        "stage2_status",
+        "stage4_decision",
+        "created_at",
+        "updated_at",
+    ]
     conn.execute(
-        """
-        INSERT OR REPLACE INTO review_work_items
-        (work_item_id, document_id, queue, reason_codes_json, priority, sla_due_at,
-         status, assigned_to, stage1_status, stage2_status, stage4_decision, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        build_upsert_sql("review_work_items", rw_columns, ["work_item_id"]),
         (
             item.work_item_id,
             item.document_id,
@@ -979,10 +1046,11 @@ def get_vendor_profile(vendor_id: str) -> dict | None:
 def save_vendor_profile(vendor_id: str, profile: dict) -> None:
     conn = get_connection()
     conn.execute(
-        """
-        INSERT OR REPLACE INTO vendor_profiles (vendor_id, profile_json, updated_at)
-        VALUES (?, ?, ?)
-        """,
+        build_upsert_sql(
+            "vendor_profiles",
+            ["vendor_id", "profile_json", "updated_at"],
+            ["vendor_id"],
+        ),
         (vendor_id, json.dumps(profile), datetime.utcnow().isoformat()),
     )
     conn.commit()

@@ -4,6 +4,7 @@ import { num } from '@/lib/normalize'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { formatApiErrorMessage } from '@/lib/api/client'
 import { confirmPo, rejectPoSuggestions } from '@/lib/api/invoices'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select, Textarea } from '@/components/ui/input'
@@ -29,7 +30,7 @@ export function POSuggestionsList({ documentId, stage2, interactive = true }: Pr
       toast.success(`PO ${poChoice} confirmed`)
       queryClient.invalidateQueries({ queryKey: ['invoice', documentId] })
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(formatApiErrorMessage(e, 'PO confirmation failed')),
   })
 
   const rejectMutation = useMutation({
@@ -38,7 +39,7 @@ export function POSuggestionsList({ documentId, stage2, interactive = true }: Pr
       toast.warning('PO suggestions rejected')
       queryClient.invalidateQueries({ queryKey: ['invoice', documentId] })
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(formatApiErrorMessage(e, 'Could not reject suggestions')),
   })
 
   if (!candidates.length) return null

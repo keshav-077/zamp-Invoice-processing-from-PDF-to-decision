@@ -62,6 +62,31 @@ def test_import_returns_422_when_review_needed(client):
     assert detail.get("review_needed") is True
 
 
+def test_upload_async_returns_job_id(client):
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000a49444154789c6300010000050001b8b82f0000000049454e44ae426082"
+    )
+    resp = client.post(
+        "/api/upload/async",
+        files={"file": ("invoice.png", png, "image/png")},
+    )
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["job_id"].startswith("JOB-")
+    assert body["status"] == "queued"
+
+
+def test_upload_async_rejects_bad_extension(client):
+    resp = client.post(
+        "/api/upload/async",
+        files={"file": ("bad.txt", b"hello", "text/plain")},
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert isinstance(detail, str) and detail.strip()
+
+
 def test_import_confirm_succeeds_after_mappings(client):
     csv_content = (
         "vendor_name_on_po,po_number,po_amount,issue_date\n"

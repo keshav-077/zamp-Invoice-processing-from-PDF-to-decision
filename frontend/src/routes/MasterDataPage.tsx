@@ -13,7 +13,7 @@ import {
   type MasterDataPreview,
   type SheetProfile,
 } from '@/lib/api/masterData'
-import { ApiError } from '@/lib/api/client'
+import { ApiError, formatApiErrorMessage } from '@/lib/api/client'
 
 const BUCKET_LABELS: Record<string, string> = {
   vendor: 'Vendors',
@@ -88,6 +88,22 @@ function sumBuckets(summary: Record<string, ActivationBucket> | undefined, field
   return Object.values(summary).reduce((acc, b) => acc + (b[field] ?? 0), 0)
 }
 
+function isImportComplete(preview: MasterDataPreview | null): boolean {
+  return Boolean(preview?.import_id || preview?.committed)
+}
+
+function importSuccessMessage(data: MasterDataPreview): string {
+  const { vendors = 0, purchase_orders: pos = 0, source_records: src = 0, po_lines: lines = 0 } =
+    data.summary ?? {}
+  const parts: string[] = []
+  if (src > 0) parts.push(`${src} transaction(s)`)
+  if (pos > 0) parts.push(`${pos} PO(s)`)
+  if (vendors > 0) parts.push(`${vendors} vendor(s)`)
+  if (lines > 0) parts.push(`${lines} PO line(s)`)
+  const detail = parts.length > 0 ? parts.join(', ') : `${sumBuckets(data.classification_summary, 'ready')} row(s)`
+  return `Master data imported — ${detail}`
+}
+
 export function MasterDataPage() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<MasterDataPreview | null>(null)
@@ -118,13 +134,7 @@ export function MasterDataPage() {
       else toast.error(`${data.errors.length} validation error(s)`)
     },
     onError: (err: Error) => {
-      const msg =
-        err instanceof ApiError
-          ? err.detail
-          : err.message === 'Failed to fetch'
-            ? 'Could not reach the API — ensure the backend is running on port 8000'
-            : err.message
-      toast.error(msg || 'Preview failed — check the file format (.csv, .xlsx)')
+      toast.error(formatApiErrorMessage(err, 'Preview failed — check the file format (.csv, .xlsx)'))
     },
   })
 
@@ -132,18 +142,36 @@ export function MasterDataPage() {
     mutationFn: () => importMasterData(file!),
     onSuccess: (data) => {
       setPreview(data)
-      if (data.valid || data.partial_success) toast.success('Master data imported')
-      else if (data.review_needed) toast.message('Confirm mappings to complete import')
+      if (isImportComplete(data)) {
+        toast.success(importSuccessMessage(data))
+      } else if (data.valid || data.partial_success) {
+        toast.success('Master data imported')
+      } else if (data.review_needed) {
+        toast.message('Confirm mappings to complete import')
+      } else {
+        toast.message('Import finished — check details below')
+      }
+      if (data.warnings.length > 0) {
+        toast.message(`${data.warnings.length} warning(s) — see details below`)
+      }
       importsQuery.refetch()
     },
     onError: (err: Error) => {
-      const msg =
-        err instanceof ApiError
-          ? err.detail
-          : err.message === 'Failed to fetch'
-            ? 'Could not reach the API — ensure the backend is running on port 8000'
-            : err.message
-      toast.error(msg || 'Import failed — see details below')
+      if (err instanceof ApiError && err.payload && typeof err.payload === 'object') {
+        const result = err.payload as MasterDataPreview
+        if (Array.isArray(result.errors) || result.row_issues) {
+          setPreview(result)
+          if (result.review_needed) {
+            toast.message('Review column mappings, then confirm import')
+            return
+          }
+          toast.error(
+            `Import blocked: ${result.row_issues?.filter((i) => i.status === 'blocked').length ?? result.errors.length} blocking issue(s)`,
+          )
+          return
+        }
+      }
+      toast.error(formatApiErrorMessage(err, 'Import failed — see details below'))
     },
   })
 
@@ -174,13 +202,7 @@ export function MasterDataPage() {
           return
         }
       }
-      const msg =
-        err instanceof ApiError
-          ? err.detail
-          : err.message === 'Failed to fetch'
-            ? 'Could not reach the API — ensure the backend is running on port 8000'
-            : err.message
-      toast.error(msg)
+      toast.error(formatApiErrorMessage(err, 'Import confirmation failed'))
     },
   })
 
@@ -203,6 +225,8 @@ export function MasterDataPage() {
     () => Boolean(preview && totalReady > 0 && totalBlocked === 0 && preview.review_needed),
     [preview, totalReady, totalBlocked],
   )
+
+  const importComplete = isImportComplete(preview)
 
   return (
     <>
@@ -235,10 +259,10 @@ export function MasterDataPage() {
               Preview
             </Button>
             <Button
-              disabled={!file || !canImport || importMutation.isPending}
+              disabled={!file || !canImport || importMutation.isPending || importComplete}
               onClick={() => importMutation.mutate()}
             >
-              Import
+              {importComplete ? 'Imported' : importMutation.isPending ? 'Importing…' : 'Import'}
             </Button>
             {(preview?.review_needed || canConfirm) && (
               <Button
@@ -253,15 +277,37 @@ export function MasterDataPage() {
         </div>
 
         {preview && (
-          <div className="rounded-2xl border border-border bg-card/40 p-6 space-y-4">
+          <div
+            className={`rounded-2xl border bg-card/40 p-6 space-y-4 ${
+              importComplete ? 'border-green-500/40' : 'border-border'
+            }`}
+          >
+            {importComplete && (
+              <div
+                role="status"
+                className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300"
+              >
+                <p className="font-medium text-green-200">Master data imported successfully</p>
+                <p className="mt-1 text-green-300/90">{importSuccessMessage(preview)}</p>
+                {(preview.import_id || preview.batch_id) && (
+                  <p className="mt-1 text-xs text-green-400/80">
+                    {preview.import_id ? `Import ${preview.import_id}` : ''}
+                    {preview.import_id && preview.batch_id ? ' · ' : ''}
+                    {preview.batch_id ? `batch ${preview.batch_id}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
             <h3 className="font-display text-lg">
-              {preview.valid
-                ? 'Ready to import'
-                : preview.review_needed
-                  ? 'Mapping review required'
-                  : preview.partial_success
-                    ? 'Partial import available'
-                    : 'Validation failed'}
+              {importComplete
+                ? 'Import complete'
+                : preview.valid
+                  ? 'Ready to import'
+                  : preview.review_needed
+                    ? 'Mapping review required'
+                    : preview.partial_success
+                      ? 'Partial import available'
+                      : 'Validation failed'}
             </h3>
             {preview.summary.rows_analyzed != null && (
               <p className="text-sm text-muted">
@@ -318,12 +364,6 @@ export function MasterDataPage() {
                   <li key={e}>• {e}</li>
                 ))}
               </ul>
-            )}
-            {preview.import_id && (
-              <p className="text-sm text-green-400">
-                Import {preview.import_id}
-                {preview.batch_id ? ` · batch ${preview.batch_id}` : ''} committed.
-              </p>
             )}
           </div>
         )}

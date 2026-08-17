@@ -148,21 +148,42 @@ async def upload_invoice_async(
 
     ext = Path(file.filename).suffix.lower()
     if ext not in settings.supported_extensions:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+        supported = ", ".join(settings.supported_extensions)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {ext}. Supported: {supported}",
+        )
 
-    content = await file.read()
-    unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
-    storage = get_storage()
-    storage_key, blob_url = await storage.save_upload(unique_name, content)
+    try:
+        content = await file.read()
+        unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+        storage = get_storage()
+        storage_key, blob_url = await storage.save_upload(unique_name, content)
 
-    job = create_job(filename=file.filename, blob_url=blob_url, storage_key=storage_key)
-    mode = await schedule_invoice_job(job["job_id"], background_tasks=background_tasks)
-    return {
-        "job_id": job["job_id"],
-        "status": "queued",
-        "filename": file.filename,
-        "processing_mode": mode,
-    }
+        job = create_job(filename=file.filename, blob_url=blob_url, storage_key=storage_key)
+        mode = await schedule_invoice_job(job["job_id"], background_tasks=background_tasks)
+        return {
+            "job_id": job["job_id"],
+            "status": "queued",
+            "filename": file.filename,
+            "processing_mode": mode,
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        logger.exception("Async upload storage failed")
+        raise HTTPException(
+            status_code=503,
+            detail=f"File storage unavailable: {exc}. Configure BLOB_READ_WRITE_TOKEN on Vercel.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Async upload failed")
+        from app.db.database import get_connection
+
+        conn = get_connection()
+        if hasattr(conn, "rollback"):
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
 
 
 @router.get("/invoices")

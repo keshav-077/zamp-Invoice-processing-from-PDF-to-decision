@@ -17,7 +17,10 @@ const API_BASE = resolveApiBase()
 const UPLOAD_TIMEOUT = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS ?? 300000)
 
 function formatApiDetail(detail: unknown, fallback: string): string {
-  if (typeof detail === 'string') return detail || fallback
+  if (typeof detail === 'string') {
+    const trimmed = detail.trim()
+    return trimmed || fallback || 'Request failed'
+  }
   if (Array.isArray(detail)) {
     const msgs = detail
       .map((item) => {
@@ -42,9 +45,43 @@ function formatApiDetail(detail: unknown, fallback: string): string {
       const more = errors.length > 3 ? ` (+${errors.length - 3} more)` : ''
       return `Import failed: ${head}${more}`
     }
-    if (typeof obj.message === 'string') return obj.message
+    if (typeof obj.message === 'string' && obj.message.trim()) return obj.message.trim()
+    if (typeof obj.error === 'string' && obj.error.trim()) return obj.error.trim()
+    if (typeof obj.error_message === 'string' && obj.error_message.trim()) {
+      return obj.error_message.trim()
+    }
   }
-  return fallback || 'Request failed'
+  const fb = (fallback || 'Request failed').trim()
+  return fb || 'Request failed'
+}
+
+/** User-facing message for any API or network failure — never returns an empty string. */
+export function formatApiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  const normalize = (text: string) => text.replace(/\s+/g, ' ').trim()
+
+  if (err instanceof ApiError) {
+    const msg = normalize(err.detail || '')
+    if (msg) return msg
+    if (err.status === 408) {
+      return 'Request timed out — try again or use a smaller file'
+    }
+    if (err.status === 429) return 'Rate limit exceeded — wait a minute and try again'
+    if (err.status === 501) return 'This feature is not configured on the server'
+    if (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504) {
+      return 'Could not reach the API — check that the backend is running'
+    }
+    if (err.status > 0) return `${fallback} (HTTP ${err.status})`
+    return 'Could not reach the API — check that the backend is running'
+  }
+  if (err instanceof Error) {
+    const msg = normalize(err.message || '')
+    if (msg === 'Failed to fetch') {
+      return 'Could not reach the API — ensure the backend is running on port 8000'
+    }
+    if (msg) return msg
+  }
+  if (typeof err === 'string' && err.trim()) return err.trim()
+  return fallback
 }
 
 export class ApiError extends Error {
@@ -95,7 +132,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       } catch {
         /* ignore */
       }
-      throw new ApiError(response.status, detail, payload)
+      const message =
+        formatApiDetail(payload ?? detail, detail).trim() ||
+        `Request failed (HTTP ${response.status})`
+      throw new ApiError(response.status, message, payload)
     }
 
     if (response.status === 204) return undefined as T
@@ -111,7 +151,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new ApiError(408, 'Request timed out')
     }
-    throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    throw new ApiError(0, formatApiErrorMessage(err, 'Network error'))
   } finally {
     clearTimeout(timer)
   }

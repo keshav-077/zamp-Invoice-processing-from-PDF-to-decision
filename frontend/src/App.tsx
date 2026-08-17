@@ -45,7 +45,20 @@ export default function App() {
           </Routes>
         </AppShell>
       </BrowserRouter>
-      <Toaster theme="dark" position="top-right" richColors />
+      <Toaster
+        theme="dark"
+        position="top-right"
+        richColors
+        toastOptions={{
+          classNames: {
+            toast: 'border border-border bg-surface text-foreground',
+            title: 'text-foreground',
+            description: 'text-muted',
+            error: 'border-danger/40 bg-danger/15 text-foreground',
+            success: 'border-success/40 bg-success/15 text-foreground',
+          },
+        }}
+      />
     </QueryClientProvider>
   )
 }

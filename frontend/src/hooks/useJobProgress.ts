@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RailStageStatus } from '@/components/journey/StageProgressRail'
 import { fetchJobStatus } from '@/lib/api/jobs'
+import { formatApiErrorMessage } from '@/lib/api/client'
 
 const STAGE_KEYS = ['stage1', 'stage2', 'stage3', 'stage4', 'stage5'] as const
 
@@ -47,14 +48,14 @@ export function useJobProgress(jobId: string | null, enabled: boolean) {
         setActiveStage(mapped.activeStage)
         setStageStatuses(mapped.stageStatuses)
         if (job.status === 'failed') {
-          setError(job.error_message || 'Processing failed')
+          setError(job.error_message?.trim() || 'Processing failed')
         }
         if (job.status === 'completed' || job.status === 'failed') {
           return false
         }
         return true
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Poll failed')
+        if (!cancelled) setError(formatApiErrorMessage(e, 'Could not check job status'))
         return false
       }
     }
