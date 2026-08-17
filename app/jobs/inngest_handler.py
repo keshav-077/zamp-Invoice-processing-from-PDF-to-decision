@@ -12,13 +12,25 @@ from app.jobs.job_service import run_job
 logger = logging.getLogger(__name__)
 
 _inngest_client = None
+_inngest_disabled = False
+
+
+def inngest_configured() -> bool:
+    """Inngest requires both keys; a lone event key causes runtime failures."""
+    return bool(settings.inngest_event_key and settings.inngest_signing_key)
 
 
 def get_inngest():
-    global _inngest_client
+    global _inngest_client, _inngest_disabled
+    if _inngest_disabled:
+        return None
     if _inngest_client is not None:
         return _inngest_client
-    if not settings.inngest_event_key:
+    if not inngest_configured():
+        if settings.inngest_event_key and not settings.inngest_signing_key:
+            logger.warning(
+                "INNGEST_EVENT_KEY set without INNGEST_SIGNING_KEY — using background tasks"
+            )
         return None
     try:
         import inngest
@@ -60,9 +72,12 @@ async def schedule_invoice_job(
     if client is not None:
         import inngest
 
-        await client.send(inngest.Event(name="invoice/process", data={"job_id": job_id}))
-        logger.info("Job %s queued via Inngest", job_id)
-        return "inngest"
+        try:
+            await client.send(inngest.Event(name="invoice/process", data={"job_id": job_id}))
+            logger.info("Job %s queued via Inngest", job_id)
+            return "inngest"
+        except Exception as exc:
+            logger.warning("Inngest send failed for job %s (%s) — using background task", job_id, exc)
 
     if background_tasks is not None:
         background_tasks.add_task(run_job, job_id)
