@@ -339,6 +339,11 @@ class AdaptiveImporter:
             result["import_id"] = import_id
             return result
         except Exception as exc:
+            from app.db.database import get_connection
+
+            conn = get_connection()
+            if hasattr(conn, "rollback"):
+                conn.rollback()
             repository.complete_master_data_import(
                 import_id=import_id,
                 status="failed",

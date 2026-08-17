@@ -286,6 +286,7 @@ CREATE TABLE IF NOT EXISTS import_staging_rows (
     raw_json            TEXT NOT NULL,
     canonical_json      TEXT DEFAULT '{}',
     metadata_json       TEXT DEFAULT '{}',
+    classification_json TEXT DEFAULT '{}',
     FOREIGN KEY (batch_id) REFERENCES import_staging_batches(batch_id)
 );
 
@@ -548,9 +549,12 @@ def _migrate_columns(conn) -> None:
     for table, column, col_type in MIGRATION_COLUMNS:
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
-            logger.info(f"Migrated: {table}.{column}")
+            if hasattr(conn, "commit"):
+                conn.commit()
+            logger.info("Migrated: %s.%s", table, column)
         except Exception:
-            pass  # Column already exists
+            if hasattr(conn, "rollback"):
+                conn.rollback()
 
     # Ensure default company exists for company-scoped master data
     try:
@@ -562,8 +566,11 @@ def _migrate_columns(conn) -> None:
             """,
             ("DEFAULT", "Default Company"),
         )
+        if hasattr(conn, "commit"):
+            conn.commit()
     except Exception:
-        pass
+        if hasattr(conn, "rollback"):
+            conn.rollback()
 
 
 def _migrate_composite_po_keys(conn) -> None:

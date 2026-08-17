@@ -642,8 +642,17 @@ async def import_master_data(
     from app.services.master_data_importer import MasterDataImporter
 
     set_company_id(company_id)
-    content = await file.read()
-    result = MasterDataImporter().commit(content, file.filename, company_id=company_id)
+    try:
+        content = await file.read()
+        result = MasterDataImporter().commit(content, file.filename, company_id=company_id)
+    except Exception as exc:
+        logger.exception("Master data import failed")
+        from app.db.database import get_connection
+
+        conn = get_connection()
+        if hasattr(conn, "rollback"):
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Import failed: {exc}") from exc
     if not result.get("valid") and not result.get("partial_success"):
         raise HTTPException(status_code=422, detail=result)
     if result.get("review_needed"):
