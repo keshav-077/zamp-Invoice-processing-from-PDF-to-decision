@@ -1,18 +1,19 @@
 # Stage 1 routing policy — config-driven, not hardcoded in router.py
-# Fields required for Stage 4 auto-approval (matching can proceed with fewer)
+# Fields required for payment approval path (PO matching can proceed with fewer)
 approval_critical_fields:
   - total_amount
-  - invoice_number
   - vendor_name
-  - invoice_date
   - currency
+
+# Invoice identity fields — informational only; PO match is authoritative
+optional_identity_fields:
+  - invoice_number
+  - invoice_date
 
 # Legacy alias — used for extraction review flags
 critical_fields:
   - total_amount
-  - invoice_number
   - vendor_name
-  - invoice_date
   - currency
 
 # PO resolution — single authoritative minimum signals policy (Spec Section 31)
@@ -63,12 +64,13 @@ non_blocking_fields:
   - subtotal
   - tax_amount
   - line_items
+  - invoice_number
+  - invoice_date
 
 # Verification: only these fields at high severity block routing
 blocking_verification_fields:
   - total_amount
   - vendor_name
-  - invoice_number
   - currency
 
 # When reconciliation + verification both pass, relax confidence on these fields

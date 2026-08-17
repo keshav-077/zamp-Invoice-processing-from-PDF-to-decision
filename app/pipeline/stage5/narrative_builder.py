@@ -8,6 +8,8 @@ PRD Section 10: reason_code → approved language template → narrative line
 """
 
 import logging
+from typing import Any
+
 from app.models.decision import DecisionRecord, RuleEvaluation
 from app.models.explanation import NarrativeEntry
 
@@ -33,6 +35,45 @@ SUBSTATE_TEMPLATES = {
     "POLICY_CONFIGURATION_ERROR": "Invoice processing paused: no applicable policy found.",
 }
 
+MATCH_STATUS_LABELS = {
+    "matched": "PO matched on explicit reference",
+    "high_confidence_match": "PO matched with high confidence (vendor + amount/lines)",
+    "partial_match": "PO partially matched — some line variance",
+    "ambiguous_match": "Multiple PO candidates — human must choose",
+    "unmatched": "No PO match found in master data",
+    "waiting_for_po": "Awaiting PO in master data",
+    "waiting_for_grn": "Matched PO but goods receipt not yet posted",
+}
+
+REASON_CODE_EXPLANATIONS = {
+    "missing_invoice_number": (
+        "No invoice number on the document. This is acceptable when a PO match "
+        "already identifies the payable."
+    ),
+    "missing_invoice_date": (
+        "No invoice date on the document. Payment timing uses PO terms instead."
+    ),
+    "missing_currency": "Currency could not be determined — blocks automatic payment.",
+    "EXTRACTION_FIELDS_INCOMPLETE": (
+        "Required payment fields are missing or uncertain on the extraction."
+    ),
+    "reconciliation_residual": (
+        "Line items and totals do not fully reconcile — unexplained difference remains."
+    ),
+    "AMBIGUOUS_PO_MATCH": (
+        "More than one PO fits this invoice — a person must confirm which PO to pay against."
+    ),
+    "PRICE_VARIANCE_EXCEEDED": "Invoice price differs from the PO beyond allowed tolerance.",
+    "BUDGET_EXCEEDED": "Invoice amount exceeds remaining PO budget.",
+    "TAX_VARIANCE": "Tax amount differs from expected PO tax.",
+    "GRN_MISSING": "Goods receipt note required before payment can proceed.",
+    "DUPLICATE_CONFIRMED": "This invoice appears to be a duplicate of one already paid.",
+    "VENDOR_BLACKLISTED": "Vendor is blocked — payment cannot proceed.",
+    "VENDOR_INELIGIBLE": "Vendor is not eligible for payment under current policy.",
+    "UNKNOWN_VALIDATION_STATE": "Validation ended in an unexpected state — routed to review.",
+    "NO_APPLICABLE_POLICY": "No payment policy applies — configuration review needed.",
+}
+
 # Rule ID → narrative template
 RULE_TEMPLATES = {
     "CONTRACT_GATE": "✅ Contract gate: Stage 4 input contract validated.",
@@ -47,54 +88,93 @@ RULE_TEMPLATES = {
     "NEW_VENDOR_OVERRIDE": "⚠️ Override: {detail}",
     "CLUSTERING_OVERRIDE": "⚠️ Override: {detail}",
     "HIGH_FRAUD_OVERRIDE": "🚨 Override: {detail}",
-    "STAGE3_STATE": "📋 Stage 3 state: {detail}",
+    "STAGE3_STATE": "📋 Stage 3 validation: {detail}",
     "POLICY_NO_MATCH": "❌ Policy: {detail}",
     "VENDOR_RISK": "⚠️ Vendor risk: {detail}",
     "AUTHORITY_AUTO_APPROVE": "✅ Authority: {detail}",
 }
 
 
-def build_buyer_summary(decision_record: DecisionRecord) -> str:
-    """Plain-English one-liner for AP managers (demo / interview)."""
+def build_buyer_summary(
+    decision_record: DecisionRecord,
+    match_package: dict[str, Any] | None = None,
+) -> str:
+    """Plain-English one-liner for AP managers."""
     decision = decision_record.decision
     substate = decision_record.decision_substate
+    po = _matched_po_label(match_package, decision_record)
+    po_clause = f" against {po}" if po else ""
+
     templates = {
-        "AUTO_APPROVED": "This invoice passed all checks and can be paid automatically.",
-        "APPROVAL_REQUIRED": "This invoice matched the PO but needs a manager to approve payment.",
-        "REVIEW_REQUIRED": "Something needs a person to look at this before we pay.",
-        "REJECTED": "Do not pay this invoice — a blocking rule failed.",
+        "APPROVE": f"This invoice can be paid{po_clause}.",
+        "REVIEW_REQUIRED": (
+            f"This invoice matched a PO{po_clause} but needs a person to review before payment."
+            if po
+            else "This invoice needs a person to review before we pay."
+        ),
+        "REJECT": "Do not pay this invoice — a blocking rule failed.",
         "WAITING_FOR_VALIDATION": "We are waiting for more information before deciding.",
     }
     base = templates.get(decision, f"Decision: {decision}.")
-    return f"{base} ({substate.replace('_', ' ').title()})"
+    detail = SUBSTATE_TEMPLATES.get(substate, substate.replace("_", " ").title())
+    if substate == "AUTO_APPROVED":
+        return f"{base} All checks passed within auto-approval limits."
+    if substate == "APPROVAL_REQUIRED":
+        return f"{base} A manager must approve because of amount or policy limits."
+    return f"{base} {detail}"
 
 
-def build_narrative(decision_record: DecisionRecord) -> list[NarrativeEntry]:
+def build_narrative(
+    decision_record: DecisionRecord,
+    *,
+    match_package: dict[str, Any] | None = None,
+    validation_report: dict[str, Any] | None = None,
+    evidence_summary: list[str] | None = None,
+) -> list[NarrativeEntry]:
     """
     Build deterministic explanation narrative from Stage 4 rule trace.
 
     Every line traces to a specific rule. No LLM generation.
-
-    Args:
-        decision_record: Stage 4 DecisionRecord with complete trace
-
-    Returns:
-        List of NarrativeEntry with ordered explanation steps.
     """
     entries: list[NarrativeEntry] = []
     step = 1
+    summary_lines = evidence_summary or list(decision_record.evidence_summary)
 
     # --- Step 0: Buyer-facing summary ---
     entries.append(NarrativeEntry(
         step=step,
         category="buyer_summary",
-        text=build_buyer_summary(decision_record),
+        text=build_buyer_summary(decision_record, match_package),
         source_rule_id="BUYER_SUMMARY",
         icon=_decision_icon(decision_record.decision),
     ))
     step += 1
 
-    # --- Step 1: Decision summary ---
+    # --- PO match context (Stage 2) ---
+    match_text = _describe_po_match(match_package, summary_lines)
+    if match_text:
+        entries.append(NarrativeEntry(
+            step=step,
+            category="po_match",
+            text=match_text,
+            source_rule_id="STAGE2_MATCH",
+            icon="🔗",
+        ))
+        step += 1
+
+    # --- Validation outcome (Stage 3) ---
+    validation_text = _describe_validation(validation_report, summary_lines)
+    if validation_text:
+        entries.append(NarrativeEntry(
+            step=step,
+            category="validation",
+            text=validation_text,
+            source_rule_id="STAGE3_VALIDATION",
+            icon="📋",
+        ))
+        step += 1
+
+    # --- Decision summary ---
     substate = decision_record.decision_substate
     summary = SUBSTATE_TEMPLATES.get(substate, f"Decision: {decision_record.decision}/{substate}")
     entries.append(NarrativeEntry(
@@ -106,16 +186,23 @@ def build_narrative(decision_record: DecisionRecord) -> list[NarrativeEntry]:
     ))
     step += 1
 
-    # --- Step 2: Decision details ---
-    entries.append(NarrativeEntry(
-        step=step,
-        category="decision_detail",
-        text=f"Decision: {decision_record.decision} | Substate: {substate}",
-        source_rule_id="DECISION_DETAIL",
-    ))
-    step += 1
+    # --- Human-readable reason codes ---
+    if decision_record.reason_codes:
+        for code in decision_record.reason_codes:
+            explanation = REASON_CODE_EXPLANATIONS.get(
+                code,
+                code.replace("_", " ").capitalize(),
+            )
+            entries.append(NarrativeEntry(
+                step=step,
+                category="reason_explanation",
+                text=f"Why flagged: {explanation}",
+                source_rule_id=f"REASON_{code}",
+                icon="💡",
+            ))
+            step += 1
 
-    # --- Step 3-N: Rule trace narrative ---
+    # --- Rule trace narrative ---
     for rule in decision_record.trace.rules_evaluated:
         text = _render_rule(rule)
         if text:
@@ -135,9 +222,9 @@ def build_narrative(decision_record: DecisionRecord) -> list[NarrativeEntry]:
             step=step,
             category="policy",
             text=(
-                f"Policy: {policy.policy_id} v{policy.policy_version} | "
-                f"Tier: {policy.materiality_tier} | "
-                f"Auto-approve eligible: {policy.auto_approve_eligible}"
+                f"Payment policy {policy.policy_id} (v{policy.policy_version}): "
+                f"amount tier {policy.materiality_tier}, "
+                f"{'eligible for auto-approve' if policy.auto_approve_eligible else 'requires approver'}"
             ),
             source_rule_id="POLICY_SUMMARY",
             icon="📋",
@@ -151,9 +238,10 @@ def build_narrative(decision_record: DecisionRecord) -> list[NarrativeEntry]:
             step=step,
             category="authority",
             text=(
-                f"Approval required: group={authority.approver_group}, "
-                f"limit=${authority.required_limit:,.2f}"
+                f"Approval required from {authority.approver_group} "
+                f"(limit ${authority.required_limit:,.2f}"
                 + (", dual-control required" if authority.dual_control_required else "")
+                + ")"
             ),
             source_rule_id="AUTHORITY_SUMMARY",
             icon="👤",
@@ -167,52 +255,151 @@ def build_narrative(decision_record: DecisionRecord) -> list[NarrativeEntry]:
             step=step,
             category="routing",
             text=(
-                f"Routed to: {routing.target} | "
-                f"Priority: {routing.priority} | SLA: {routing.sla_hours}h"
+                f"Routed to {routing.target.replace('-', ' ')} — "
+                f"priority {routing.priority}, respond within {routing.sla_hours}h"
             ),
             source_rule_id="ROUTING_SUMMARY",
             icon="📤",
         ))
         step += 1
 
-    # --- Reason codes ---
-    if decision_record.reason_codes:
-        entries.append(NarrativeEntry(
-            step=step,
-            category="reason_codes",
-            text=f"Reason codes: {', '.join(decision_record.reason_codes)}",
-            source_rule_id="REASON_CODES",
-            icon="🏷️",
-        ))
-        step += 1
+    # --- Evidence trail (condensed) ---
+    if summary_lines:
+        condensed = [line for line in summary_lines if line.strip()][:8]
+        if condensed:
+            entries.append(NarrativeEntry(
+                step=step,
+                category="evidence_trail",
+                text="Evidence trail: " + " | ".join(condensed),
+                source_rule_id="EVIDENCE_TRAIL",
+                icon="📎",
+            ))
+            step += 1
 
     logger.info(f"[{decision_record.invoice_id}] Narrative: {len(entries)} entries")
     return entries
 
 
+def _matched_po_label(
+    match_package: dict[str, Any] | None,
+    decision_record: DecisionRecord,
+) -> str | None:
+    if match_package:
+        selected = match_package.get("matched_pos") or match_package.get("selected_pos") or []
+        if selected:
+            first = selected[0]
+            if isinstance(first, dict):
+                return first.get("po_number") or first.get("po_id")
+            return str(first)
+        po = match_package.get("matched_po_number") or match_package.get("po_number")
+        if po:
+            return str(po)
+    for line in decision_record.evidence_summary:
+        if "Matched PO:" in line:
+            return line.split("Matched PO:", 1)[1].strip()
+    return None
+
+
+def _describe_po_match(
+    match_package: dict[str, Any] | None,
+    summary_lines: list[str],
+) -> str:
+    status = None
+    po = None
+    score = None
+    method = None
+
+    if match_package:
+        status = match_package.get("match_status")
+        selected = match_package.get("matched_pos") or match_package.get("selected_pos") or []
+        if selected and isinstance(selected[0], dict):
+            po = selected[0].get("po_number") or selected[0].get("po_id")
+            score = selected[0].get("match_score") or selected[0].get("score")
+            method = selected[0].get("match_method") or selected[0].get("retrieval_method")
+        if not po:
+            po = match_package.get("matched_po_number") or match_package.get("po_number")
+
+    for line in summary_lines:
+        if line.startswith("Stage 2 match:"):
+            status = status or line.split(":", 1)[1].strip()
+        if line.startswith("Matched PO:"):
+            po = po or line.split(":", 1)[1].strip()
+
+    if not status and not po:
+        return ""
+
+    status_label = MATCH_STATUS_LABELS.get(status or "", status or "unknown")
+    parts = [f"Purchase order match: {status_label}"]
+    if po:
+        parts.append(f"PO {po}")
+    if score is not None:
+        parts.append(f"score {float(score):.0f}")
+    if method:
+        parts.append(f"via {method.replace('_', ' ')}")
+    return ". ".join(parts) + "."
+
+
+def _describe_validation(
+    validation_report: dict[str, Any] | None,
+    summary_lines: list[str],
+) -> str:
+    state = None
+    checks: dict[str, Any] = {}
+
+    if validation_report:
+        state = validation_report.get("overall_state")
+        checks = validation_report.get("checks") or {}
+
+    for line in summary_lines:
+        for token in ("VALIDATED", "REVIEW_REQUIRED", "HOLD", "BLOCKED", "VALIDATION_INCOMPLETE"):
+            if token in line:
+                state = state or token
+                break
+
+    if not state and not checks:
+        return ""
+
+    parts = [f"Validation result: {state or 'completed'}"]
+    failed = []
+    flagged = []
+    for check_id, check in checks.items():
+        if not isinstance(check, dict):
+            continue
+        status = check.get("status")
+        if status == "FAIL":
+            failed.append(check_id.replace("_", " "))
+        elif status == "FLAG":
+            flagged.append(check_id.replace("_", " "))
+
+    if failed:
+        parts.append(f"failed checks: {', '.join(failed)}")
+    elif flagged:
+        parts.append(f"review flags: {', '.join(flagged)}")
+    elif state == "VALIDATED":
+        parts.append("all applicable controls passed")
+
+    return ". ".join(parts) + "."
+
+
 def _render_rule(rule: RuleEvaluation) -> str:
     """Render a rule evaluation into a narrative line."""
-    # Check if we have a template
     template = RULE_TEMPLATES.get(rule.rule_id)
     if template and "{detail}" in template:
         return template.format(detail=rule.detail)
-    elif template:
+    if template:
         return template
 
-    # Handle materiality rules
     if rule.rule_id.startswith("MATERIALITY_"):
         return f"📊 Materiality: {rule.detail}"
 
-    # Handle authority rules
     if rule.rule_id.startswith("AUTHORITY_"):
         return f"👤 Authority: {rule.detail}"
 
-    # Generic rendering for unknown rules
     if rule.result == "TRIGGERED":
         return f"⚡ {rule.rule_id}: {rule.detail}"
-    elif rule.result == "NOT_TRIGGERED":
+    if rule.result == "NOT_TRIGGERED":
         return f"✅ {rule.rule_id}: {rule.detail}"
-    elif rule.result == "ERROR":
+    if rule.result == "ERROR":
         return f"❌ {rule.rule_id}: {rule.detail}"
 
     return ""

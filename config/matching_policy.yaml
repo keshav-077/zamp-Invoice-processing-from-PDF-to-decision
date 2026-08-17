@@ -74,7 +74,6 @@ unique_vendor_amount_match:
   min_amount_match: 8
 
 approval:
-  # Stage 3–5 auto-approval requires these identity fields even if matching succeeded
-  required_for_auto_approval:
-    - invoice_number
-    - invoice_date
+  # PO match satisfies identity when these fields are absent on the document
+  po_match_satisfies_identity: true
+  required_for_auto_approval: []

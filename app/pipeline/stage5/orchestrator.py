@@ -27,7 +27,12 @@ from app.models.explanation import (
     ExplanationSnapshot, IntegrityProof, UpstreamArtifact,
 )
 from app.db import repository
-from app.pipeline.stage5.evidence_resolver import resolve_evidence, UpstreamEvidenceContext, artifact_to_dict
+from app.pipeline.stage5.evidence_resolver import (
+    resolve_evidence,
+    UpstreamEvidenceContext,
+    artifact_to_dict,
+    _resolve_validation_report,
+)
 from app.pipeline.stage5.narrative_builder import build_narrative
 from app.pipeline.stage5.completeness_gate import validate_completeness
 from app.pipeline.stage5.control_verifier import verify_controls
@@ -108,7 +113,23 @@ class Stage5Orchestrator:
 
         # ── Step 5: Build deterministic narrative ──
         logger.info(f"[{document_id}] Step 5: Narrative builder")
-        narrative = build_narrative(decision_record)
+        match_dict = artifact_to_dict(match_package) if match_package is not None else None
+        validation_dict = artifact_to_dict(validation_report) if validation_report is not None else None
+        if match_dict is None or validation_dict is None:
+            run = repository.get_run(document_id)
+            if run:
+                if match_dict is None and run.get("stage2_result_json"):
+                    match_dict = artifact_to_dict(run["stage2_result_json"])
+                if validation_dict is None:
+                    validation_dict = _resolve_validation_report(
+                        document_id, decision_record, context
+                    )
+        narrative = build_narrative(
+            decision_record,
+            match_package=match_dict,
+            validation_report=validation_dict,
+            evidence_summary=list(decision_record.evidence_summary),
+        )
 
         # ── Step 6: Build rule trace summary ──
         rule_trace_summary = [

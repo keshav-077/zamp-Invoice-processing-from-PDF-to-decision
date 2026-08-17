@@ -145,7 +145,7 @@ class TestSection29Matching:
         profile = build_evidence_profile(ext, VerificationResult(verification_status="pass"))
         assert not Router().can_run_matching(ext, profile)
 
-    def test_8_missing_invoice_number_validation_flag(self, tmp_db):
+    def test_8_missing_invoice_number_passes_when_po_matched(self, tmp_db):
         _vendor("ABC Technologies", "V-ABC")
         _po("PO-101", "V-ABC", "ABC Technologies", 1000)
         ext = _extraction(
@@ -158,10 +158,14 @@ class TestSection29Matching:
         pkg = Stage2Orchestrator().match("t8", ext, suggestion_mode=False)
         assert pkg.match_status in VALIDATION_ELIGIBLE_STATES
         profile = build_evidence_profile(ext, VerificationResult(verification_status="pass"))
-        check, codes = check_extraction_fields(ext, profile)
-        assert "missing_invoice_number" in codes
+        check, codes = check_extraction_fields(ext, profile, match_status=pkg.match_status)
+        assert "missing_invoice_number" not in codes
+        assert check.status == "PASS"
         report = Stage3Orchestrator().validate("t8", ext, pkg, profile)
-        assert "missing_invoice_number" in report.reason_codes or check.status == "FLAG"
+        assert "missing_invoice_number" not in report.reason_codes
+        assert "EXTRACTION_FIELDS_INCOMPLETE" not in report.reason_codes
+        assert report.checks["extraction_completeness"].status == "PASS"
+        assert report.overall_state != "REVIEW_REQUIRED"
 
 
 class TestReconciliationSection29:

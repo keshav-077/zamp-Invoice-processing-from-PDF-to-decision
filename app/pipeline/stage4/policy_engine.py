@@ -159,13 +159,18 @@ def _resolve_policy(
     if risk_tier in ("HIGH", "ELEVATED"):
         auto_eligible = False
 
-    # Matching policy: identity fields required for auto-approval
+    # Matching policy: identity optional when PO match resolved the invoice
     from app.pipeline.policy_loader import load_matching_policy
 
-    required_fields = load_matching_policy().get("approval", {}).get(
-        "required_for_auto_approval", ["invoice_number", "invoice_date"]
-    )
+    matching_policy = load_matching_policy()
+    approval_cfg = matching_policy.get("approval", {})
+    required_fields = approval_cfg.get("required_for_auto_approval", [])
+    po_satisfies_identity = approval_cfg.get("po_match_satisfies_identity", False)
+
     extraction_snap = ctx.source_snapshots.get("extraction") or {}
+    if po_satisfies_identity and ctx.matched_po_number:
+        required_fields = []
+
     for field_name in required_fields:
         field_data = extraction_snap.get(field_name)
         value = field_data.get("value") if isinstance(field_data, dict) else field_data

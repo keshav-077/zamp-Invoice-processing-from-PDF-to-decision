@@ -159,7 +159,7 @@ class Stage3Orchestrator:
                 )
 
         extraction_check, extraction_reasons = check_extraction_fields(
-            extraction, evidence_profile
+            extraction, evidence_profile, match_status=match_package.match_status
         )
         checks["extraction_completeness"] = extraction_check
 

@@ -41,23 +41,27 @@ class TestNarrativeSummary:
         record = _make_record(substate="AUTO_APPROVED")
         narrative = build_narrative(record)
         assert len(narrative) >= 2
-        assert "auto-approved" in narrative[1].text.lower()
-        assert narrative[1].source_rule_id == "DECISION_SUMMARY"
+        summary_entries = [e for e in narrative if e.category == "decision_summary"]
+        assert len(summary_entries) == 1
+        assert "auto-approved" in summary_entries[0].text.lower()
 
     def test_terminal_reject(self):
         record = _make_record(decision="REJECT", substate="TERMINAL_REJECT")
         narrative = build_narrative(record)
-        assert "rejected" in narrative[1].text.lower()
+        summary_entries = [e for e in narrative if e.category == "decision_summary"]
+        assert "rejected" in summary_entries[0].text.lower()
 
     def test_review_required(self):
         record = _make_record(decision="REVIEW_REQUIRED", substate="HIGH_PRIORITY_REVIEW")
         narrative = build_narrative(record)
-        assert "high-priority" in narrative[1].text.lower()
+        summary_entries = [e for e in narrative if e.category == "decision_summary"]
+        assert "high-priority" in summary_entries[0].text.lower()
 
     def test_waiting_grn(self):
         record = _make_record(decision="WAITING_FOR_VALIDATION", substate="WAITING_FOR_GRN")
         narrative = build_narrative(record)
-        assert "goods receipt" in narrative[1].text.lower()
+        summary_entries = [e for e in narrative if e.category == "decision_summary"]
+        assert "goods receipt" in summary_entries[0].text.lower()
 
 
 class TestRuleNarrative:
@@ -129,15 +133,15 @@ class TestRoutingNarrative:
         narrative = build_narrative(record)
         route_entries = [e for e in narrative if e.category == "routing"]
         assert len(route_entries) == 1
-        assert "ap-exception-queue" in route_entries[0].text
+        assert "ap exception queue" in route_entries[0].text.lower()
 
 
 class TestReasonCodes:
-    def test_includes_reason_codes(self):
+    def test_includes_reason_explanations(self):
         record = _make_record(
             reason_codes=["PRICE_VARIANCE_EXCEEDED", "DUPLICATE_CONFIRMED"],
         )
         narrative = build_narrative(record)
-        code_entries = [e for e in narrative if e.category == "reason_codes"]
-        assert len(code_entries) == 1
-        assert "PRICE_VARIANCE_EXCEEDED" in code_entries[0].text
+        code_entries = [e for e in narrative if e.category == "reason_explanation"]
+        assert len(code_entries) == 2
+        assert "price" in code_entries[0].text.lower()

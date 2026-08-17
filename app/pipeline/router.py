@@ -72,6 +72,9 @@ class Router:
             self.policy.get("critical_fields", settings.critical_fields),
         )
 
+    def _optional_identity_fields(self) -> list[str]:
+        return self.policy.get("optional_identity_fields", ["invoice_number", "invoice_date"])
+
     def _minimum_signal_fields(self) -> list[str]:
         po_resolution = self.policy.get("po_resolution", {})
         any_of = po_resolution.get("minimum_signals", {}).get("any_of")
@@ -249,6 +252,26 @@ class Router:
                 decision.pass_check(
                     f"Field '{field_name}': {field.value} "
                     f"(confidence: {field.confidence:.2f} ≥ {threshold:.2f})"
+                )
+
+        for field_name in self._optional_identity_fields():
+            field = field_map.get(field_name)
+            if field is None:
+                continue
+            if field.value is None or field.status == "not_found":
+                decision.pass_check(
+                    f"Optional identity field '{field_name}' not on document — "
+                    "PO/vendor/amount matching will be used instead"
+                )
+            elif field.status == "uncertain":
+                decision.pass_check(
+                    f"Optional identity field '{field_name}' uncertain "
+                    f"({field.value}) — does not block PO matching"
+                )
+            else:
+                decision.pass_check(
+                    f"Optional identity field '{field_name}': {field.value} "
+                    f"(confidence: {field.confidence:.2f})"
                 )
 
         for field_name, field in {

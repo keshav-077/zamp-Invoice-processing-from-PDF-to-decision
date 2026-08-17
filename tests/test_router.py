@@ -126,12 +126,12 @@ class TestNeedsHumanReview:
         decision = _route(router, ext, make_passing_verification(), make_passing_arithmetic())
         assert decision.status == "needs_human_review"
 
-    def test_missing_critical_field(self):
+    def test_missing_invoice_number_does_not_block_when_other_fields_ok(self):
         ext = make_passing_extraction()
         ext.invoice_number = make_field(None, 0.0, "not_found")
         router = Router()
         decision = _route(router, ext, make_passing_verification(), make_passing_arithmetic())
-        assert decision.status == "needs_human_review"
+        assert decision.status == "stage1_passed"
 
     def test_uncertain_critical_field(self):
         ext = make_passing_extraction()
