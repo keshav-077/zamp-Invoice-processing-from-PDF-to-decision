@@ -728,6 +728,46 @@ async def activate_staged_import(batch_id: str, company_id: str = Query("DEFAULT
     return result
 
 
+@router.get("/master-data/stats")
+async def master_data_stats(company_id: str = Query("DEFAULT")):
+    """Row counts so you can verify Neon was cleared."""
+    from app.db.database import get_connection, scalar_row
+
+    conn = get_connection()
+    return {
+        "vendors": int(scalar_row(conn.execute("SELECT COUNT(*) FROM vendors WHERE company_id = ?", (company_id,)).fetchone()) or 0),
+        "purchase_orders": int(scalar_row(conn.execute("SELECT COUNT(*) FROM purchase_orders WHERE company_id = ?", (company_id,)).fetchone()) or 0),
+        "demo_po_90xx": int(
+            scalar_row(
+                conn.execute(
+                    "SELECT COUNT(*) FROM purchase_orders WHERE company_id = ? AND po_number LIKE 'PO-90%'",
+                    (company_id,),
+                ).fetchone()
+            )
+            or 0
+        ),
+        "import_pos": int(
+            scalar_row(
+                conn.execute(
+                    "SELECT COUNT(*) FROM purchase_orders WHERE company_id = ? AND po_number LIKE 'IMP-%'",
+                    (company_id,),
+                ).fetchone()
+            )
+            or 0
+        ),
+        "source_records": int(
+            scalar_row(
+                conn.execute(
+                    "SELECT COUNT(*) FROM source_records WHERE company_id = ?",
+                    (company_id,),
+                ).fetchone()
+            )
+            or 0
+        ),
+        "invoice_runs": int(scalar_row(conn.execute("SELECT COUNT(*) FROM invoice_runs").fetchone()) or 0),
+    }
+
+
 @router.post("/master-data/clear")
 async def clear_master_data(
     request: Request,

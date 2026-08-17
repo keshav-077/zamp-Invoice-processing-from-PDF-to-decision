@@ -669,6 +669,10 @@ def init_db() -> None:
         return
     _migrate_columns(conn)
     conn.commit()
+    if _is_postgres and not settings.auto_seed_on_startup:
+        from app.db import repository
+
+        repository.purge_demo_catalog_pos()
     logger.info("Database schema initialized")
 
 

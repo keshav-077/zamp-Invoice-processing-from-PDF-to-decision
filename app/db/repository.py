@@ -326,10 +326,10 @@ def search_pos_by_number(po_number: str, company_id: str = "DEFAULT") -> list[di
     if rows:
         result = []
         for row in rows:
-            d = dict(row)
+            d = _parse_po_metadata(dict(row))
             d["lines"] = get_po_lines(d["po_number"], company_id=company_id)
             result.append(d)
-        return result
+        return _filter_seed_pos_if_user_data(result, company_id)
 
     normalized = po_number.upper().replace("-", "").replace(" ", "")
     all_pos = conn.execute(
@@ -338,12 +338,12 @@ def search_pos_by_number(po_number: str, company_id: str = "DEFAULT") -> list[di
     ).fetchall()
     result = []
     for row in all_pos:
-        d = dict(row)
+        d = _parse_po_metadata(dict(row))
         po_norm = d["po_number"].upper().replace("-", "").replace(" ", "")
         if po_norm == normalized:
             d["lines"] = get_po_lines(d["po_number"], company_id=company_id)
             result.append(d)
-    return result
+    return _filter_seed_pos_if_user_data(result, company_id)
 
 
 def search_pos_by_vendor(vendor_id: str, status: str = "open", company_id: str = "DEFAULT") -> list[dict]:
@@ -374,12 +374,23 @@ def _parse_po_metadata(d: dict) -> dict:
 
 
 def _is_import_derived_po(po: dict) -> bool:
+    po_number = (po.get("po_number") or "").upper()
+    if po_number.startswith("IMP-"):
+        return True
     return bool(
         po.get("_import_derived")
         or po.get("_from_source_records")
         or po.get("metadata", {}).get("import_derived")
         or po.get("metadata", {}).get("from_source_records")
     )
+
+
+def _is_demo_catalog_po(po: dict) -> bool:
+    """PO-90xx rows shipped in data/PO.xlsx for demo invoices — not user master data."""
+    if _is_import_derived_po(po):
+        return False
+    po_number = (po.get("po_number") or "").upper()
+    return po_number.startswith("PO-90")
 
 
 def company_has_user_master_data(company_id: str = "DEFAULT") -> bool:
@@ -394,11 +405,13 @@ def company_has_user_master_data(company_id: str = "DEFAULT") -> bool:
     if src and int(src) > 0:
         return True
     rows = conn.execute(
-        "SELECT metadata_json FROM purchase_orders WHERE company_id = ?",
+        "SELECT po_number, metadata_json FROM purchase_orders WHERE company_id = ?",
         (company_id,),
     ).fetchall()
     for row in rows:
         d = dict(row)
+        if (d.get("po_number") or "").upper().startswith("IMP-"):
+            return True
         meta_raw = d.get("metadata_json") or "{}"
         try:
             meta = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
@@ -411,12 +424,66 @@ def company_has_user_master_data(company_id: str = "DEFAULT") -> bool:
 
 def _filter_seed_pos_if_user_data(pos: list[dict], company_id: str) -> list[dict]:
     """Hide demo/seed PO master rows once the company has uploaded master data."""
+    from app.config import settings
+
+    # Production Postgres: never surface bundled PO-90xx demo catalog in matching.
+    if settings.database_url:
+        pos = [po for po in pos if not _is_demo_catalog_po(po)]
+
     if not company_has_user_master_data(company_id):
         return pos
     filtered = [po for po in pos if _is_import_derived_po(po)]
     if filtered:
         return filtered
     return pos
+
+
+def purge_demo_catalog_pos(company_id: str = "DEFAULT") -> int:
+    """
+    Delete PO-90xx demo rows from PO.xlsx (leftover from reset_db.py on Neon).
+
+    Safe on production: only removes non-import_derived PO-90xx headers/lines.
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            DELETE FROM po_lines
+            WHERE company_id = ? AND po_number LIKE 'PO-90%'
+            """,
+            (company_id,),
+        )
+        conn.execute(
+            """
+            DELETE FROM purchase_orders
+            WHERE company_id = ?
+              AND po_number LIKE 'PO-90%'
+              AND (
+                metadata_json IS NULL
+                OR metadata_json = '{}'
+                OR metadata_json NOT LIKE '%import_derived%'
+              )
+            """,
+            (company_id,),
+        )
+        conn.commit()
+        remaining = scalar_row(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM purchase_orders
+                WHERE company_id = ? AND po_number LIKE 'PO-90%'
+                """,
+                (company_id,),
+            ).fetchone()
+        )
+        removed_note = f"demo PO-90xx remaining={remaining}"
+        logger.info("purge_demo_catalog_pos: %s", removed_note)
+        return int(remaining or 0)
+    except Exception as exc:
+        logger.warning("purge_demo_catalog_pos failed: %s", exc)
+        if hasattr(conn, "rollback"):
+            conn.rollback()
+        return -1
 
 
 def _retrieval_method_for_po(po: dict, default_method: str) -> str:
@@ -1670,7 +1737,7 @@ def search_open_pos_by_vendor_identity(
             results.append(po)
             seen.add(po["po_number"])
 
-    return results
+    return _filter_seed_pos_if_user_data(results, company_id)
 
 
 MASTER_DATA_TABLES = [
