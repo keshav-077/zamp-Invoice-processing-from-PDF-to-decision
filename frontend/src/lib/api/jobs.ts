@@ -10,7 +10,7 @@ export interface JobStatus {
 }
 
 export function fetchJobStatus(jobId: string) {
-  return apiRequest<JobStatus>(`/jobs/${jobId}`, { timeout: 5000 })
+  return apiRequest<JobStatus>(`/jobs/${jobId}`, { timeout: 120000 })
 }
 
 export function uploadInvoiceAsync(file: File) {

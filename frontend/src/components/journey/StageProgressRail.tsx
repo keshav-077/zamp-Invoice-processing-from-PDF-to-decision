@@ -10,14 +10,35 @@ interface StageProgressRailProps {
   activeStage: number
   stageStatuses: RailStageStatus[]
   error?: string | null
+  statusMessage?: string | null
 }
 
-export function StageProgressRail({ activeStage, stageStatuses, error }: StageProgressRailProps) {
+export function StageProgressRail({
+  activeStage,
+  stageStatuses,
+  error,
+  statusMessage,
+}: StageProgressRailProps) {
+  const isRunning = stageStatuses.some((s) => s === 'active') && !error
+
   return (
     <div className="rounded-2xl border border-border bg-surface p-6">
-      <h3 className="mb-6 text-sm font-medium uppercase tracking-wider text-muted">
-        Pipeline progress
-      </h3>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h3 className="text-sm font-medium uppercase tracking-wider text-muted">
+          Pipeline progress
+        </h3>
+        {isRunning && (
+          <div className="flex items-center gap-2 text-xs text-accent">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Processing…</span>
+          </div>
+        )}
+      </div>
+      {statusMessage && isRunning && (
+        <p className="mb-4 rounded-xl border border-accent/20 bg-accent/5 px-4 py-3 text-sm text-accent/90">
+          {statusMessage}
+        </p>
+      )}
       <div className="relative flex flex-col gap-0 md:flex-row md:items-start md:justify-between">
         {[1, 2, 3, 4, 5].map((n, i) => {
           const status = stageStatuses[n - 1] ?? 'pending'

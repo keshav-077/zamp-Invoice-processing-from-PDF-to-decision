@@ -119,10 +119,17 @@ class Settings(BaseSettings):
 
     @property
     def upload_path(self) -> Path:
-        """Absolute path to the upload directory."""
-        if self.is_vercel and not self.blob_read_write_token:
+        """Absolute path to the upload directory (writable temp dir on Vercel)."""
+        if self.is_vercel:
             return Path("/tmp/invoiceflow-uploads")
         return Path(__file__).parent.parent / self.upload_dir
+
+    @property
+    def temp_path(self) -> Path:
+        """Writable scratch space for downloads and processing."""
+        if self.is_vercel:
+            return Path("/tmp/invoiceflow-scratch")
+        return self.upload_path
 
     @property
     def db_path(self) -> Path:

@@ -45,7 +45,7 @@ export function UploadPage() {
     },
     onSuccess: (data) => {
       setJobId(data.job_id)
-      toast.success(`Processing started for ${data.filename ?? 'invoice'}`)
+      toast.success(`Processing started — ${data.filename ?? 'invoice'}`)
     },
     onError: (err: Error) => {
       const msg = formatApiErrorMessage(err, 'Upload failed — could not start processing')
@@ -145,6 +145,11 @@ export function UploadPage() {
             activeStage={activeStage}
             stageStatuses={stageStatuses}
             error={pipelineError ?? null}
+            statusMessage={
+              jobProgress.isRunning
+                ? 'Running Stages 1–5 on the server — large invoices can take 1–3 minutes on first load.'
+                : null
+            }
           />
         )}
 

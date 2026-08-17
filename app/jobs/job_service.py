@@ -59,11 +59,11 @@ async def run_job(job_id: str) -> dict:
         return job
 
     repository.update_processing_job(job_id, status="processing")
-    storage = get_storage()
-    storage_key = job.get("storage_key") or job.get("blob_url", "")
-    file_path = await storage.get_local_path(storage_key)
-
     try:
+        storage = get_storage()
+        storage_key = job.get("storage_key") or job.get("blob_url", "")
+        file_path = await storage.get_local_path(storage_key)
+
         _set_stages(job_id, "stage1", "active")
         provider = get_provider()
         orchestrator = PipelineOrchestrator(provider)

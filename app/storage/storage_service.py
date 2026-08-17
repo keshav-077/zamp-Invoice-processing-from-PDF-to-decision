@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -9,6 +10,16 @@ from pathlib import Path
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _blob_cache_path(storage_key: str) -> Path:
+    """Safe writable path for a downloaded blob (Vercel /tmp only)."""
+    scratch = settings.temp_path
+    scratch.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(storage_key.encode()).hexdigest()[:16]
+    raw = storage_key.split("?")[0]
+    ext = Path(raw).suffix if "." in Path(raw).name else ".bin"
+    return scratch / f"blob_{digest}{ext}"
 
 
 class StorageBackend(ABC):
@@ -73,13 +84,11 @@ class BlobStorageBackend(StorageBackend):
     async def get_local_path(self, storage_key: str) -> Path:
         import httpx
 
-        tmp = settings.upload_path / f"_blob_{storage_key.replace('/', '_')}"
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        if storage_key.startswith("http"):
-            url = storage_key
-        else:
-            url = self.public_url(storage_key)
-        async with httpx.AsyncClient(timeout=60) as client:
+        tmp = _blob_cache_path(storage_key)
+        if tmp.exists() and tmp.stat().st_size > 0:
+            return tmp
+        url = storage_key if storage_key.startswith("http") else self.public_url(storage_key)
+        async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             tmp.write_bytes(resp.content)
