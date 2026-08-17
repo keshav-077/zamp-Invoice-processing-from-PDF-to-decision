@@ -48,11 +48,27 @@ class BlobStorageBackend(StorageBackend):
         except ImportError as exc:
             raise RuntimeError("vercel-blob package required for blob storage") from exc
 
-        blob = put(filename, content, access="public")
-        url = blob.get("url") or blob.get("downloadUrl", "")
-        key = blob.get("pathname", filename)
-        logger.info("Uploaded to Vercel Blob: %s", key)
-        return key, url
+        if not settings.blob_read_write_token:
+            raise RuntimeError("BLOB_READ_WRITE_TOKEN not configured")
+
+        path = f"invoices/{filename}"
+        options = {"token": settings.blob_read_write_token}
+        timeout = max(60, min(settings.upload_api_timeout_seconds, 300))
+
+        blob = put(
+            path,
+            content,
+            options=options,
+            timeout=timeout,
+            multipart=len(content) > 4 * 1024 * 1024,
+        )
+        url = blob.get("url") or blob.get("downloadUrl") or ""
+        if not url:
+            raise RuntimeError(f"Vercel Blob upload returned no URL: {blob!r}")
+
+        logger.info("Uploaded to Vercel Blob: %s", url)
+        # Store the public URL as the key so downstream download works on Vercel.
+        return url, url
 
     async def get_local_path(self, storage_key: str) -> Path:
         import httpx
