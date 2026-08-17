@@ -9,7 +9,7 @@ import json
 import logging
 from datetime import datetime
 
-from app.db.database import get_connection
+from app.db.database import get_connection, scalar_row
 from app.db.sql_dialect import build_upsert_sql, is_postgres
 from app.models.pipeline import PipelineResult
 
@@ -358,7 +358,7 @@ def search_pos_by_vendor(vendor_id: str, status: str = "open", company_id: str =
         d = _parse_po_metadata(dict(row))
         d["lines"] = get_po_lines(d["po_number"], company_id=company_id)
         result.append(d)
-    return result
+    return _filter_seed_pos_if_user_data(result, company_id)
 
 
 def _parse_po_metadata(d: dict) -> dict:
@@ -371,6 +371,52 @@ def _parse_po_metadata(d: dict) -> dict:
         d["metadata"] = {}
     d["_import_derived"] = bool(d.get("metadata", {}).get("import_derived"))
     return d
+
+
+def _is_import_derived_po(po: dict) -> bool:
+    return bool(
+        po.get("_import_derived")
+        or po.get("_from_source_records")
+        or po.get("metadata", {}).get("import_derived")
+        or po.get("metadata", {}).get("from_source_records")
+    )
+
+
+def company_has_user_master_data(company_id: str = "DEFAULT") -> bool:
+    """True when the tenant has imported source records or mirrored PO rows."""
+    conn = get_connection()
+    src = scalar_row(
+        conn.execute(
+            "SELECT COUNT(*) FROM source_records WHERE company_id = ?",
+            (company_id,),
+        ).fetchone()
+    )
+    if src and int(src) > 0:
+        return True
+    rows = conn.execute(
+        "SELECT metadata_json FROM purchase_orders WHERE company_id = ?",
+        (company_id,),
+    ).fetchall()
+    for row in rows:
+        d = dict(row)
+        meta_raw = d.get("metadata_json") or "{}"
+        try:
+            meta = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+        except json.JSONDecodeError:
+            meta = {}
+        if meta.get("import_derived"):
+            return True
+    return False
+
+
+def _filter_seed_pos_if_user_data(pos: list[dict], company_id: str) -> list[dict]:
+    """Hide demo/seed PO master rows once the company has uploaded master data."""
+    if not company_has_user_master_data(company_id):
+        return pos
+    filtered = [po for po in pos if _is_import_derived_po(po)]
+    if filtered:
+        return filtered
+    return pos
 
 
 def _retrieval_method_for_po(po: dict, default_method: str) -> str:
@@ -399,7 +445,7 @@ def get_all_open_pos(company_id: str = "DEFAULT") -> list[dict]:
         d = _parse_po_metadata(dict(row))
         d["lines"] = get_po_lines(d["po_number"], company_id=company_id)
         result.append(d)
-    return result
+    return _filter_seed_pos_if_user_data(result, company_id)
 
 
 def get_grn_for_po(po_number: str, company_id: str = "DEFAULT") -> list[dict]:
