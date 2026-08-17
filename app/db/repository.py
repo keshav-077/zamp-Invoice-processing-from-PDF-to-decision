@@ -374,6 +374,8 @@ def _parse_po_metadata(d: dict) -> dict:
 
 
 def _retrieval_method_for_po(po: dict, default_method: str) -> str:
+    if po.get("_from_source_records") or po.get("metadata", {}).get("from_source_records"):
+        return "source_record"
     if po.get("_import_derived") or po.get("metadata", {}).get("import_derived"):
         return "import_derived"
     return default_method
@@ -1577,7 +1579,8 @@ def search_open_pos_by_vendor_identity(
     vendor_name: str | None,
     company_id: str = "DEFAULT",
 ) -> list[dict]:
-    """Find open POs by vendor_id and/or canonical vendor name on PO header."""
+    """Find open POs by vendor — searches purchase_orders and source_records."""
+    from app.services.import_po_mirror import source_record_as_po_candidate
     from app.services.vendor_identity import normalize_vendor_name, vendor_names_equivalent
 
     seen: set[str] = set()
@@ -1612,7 +1615,92 @@ def search_open_pos_by_vendor_identity(
                     results.append(po)
                     seen.add(po["po_number"])
 
+        for record in search_source_records_by_vendor(vendor_name, company_id):
+            po = source_record_as_po_candidate(record)
+            if not po or po["po_number"] in seen:
+                continue
+            po["_retrieval_method"] = "source_record"
+            po["_retrieval_confidence"] = 0.72
+            results.append(po)
+            seen.add(po["po_number"])
+
     return results
+
+
+MASTER_DATA_TABLES = [
+    "import_staging_rows",
+    "import_staging_batches",
+    "source_records",
+    "master_data_imports",
+    "mapping_profiles",
+    "po_references",
+    "grn_records",
+    "po_lines",
+    "purchase_orders",
+    "vendor_profiles",
+    "vendors",
+]
+
+
+def clear_master_data(company_id: str | None = None) -> dict:
+    """
+    Remove all PO master, vendor, import staging, and source_records data.
+
+    Does not delete invoice_runs or pipeline audit history unless include_invoices=True.
+    Re-seeding demo PO.xlsx data is never performed — upload your file after clearing.
+    """
+    conn = get_connection()
+    cleared: dict[str, int] = {}
+
+    for table in MASTER_DATA_TABLES:
+        try:
+            if company_id and table in {
+                "vendors",
+                "purchase_orders",
+                "po_lines",
+                "grn_records",
+                "po_references",
+                "source_records",
+                "master_data_imports",
+                "import_staging_batches",
+                "import_staging_rows",
+                "mapping_profiles",
+                "vendor_profiles",
+            }:
+                if table == "import_staging_rows":
+                    conn.execute(
+                        """
+                        DELETE FROM import_staging_rows
+                        WHERE batch_id IN (
+                            SELECT batch_id FROM import_staging_batches
+                            WHERE company_id = ?
+                        )
+                        """,
+                        (company_id,),
+                    )
+                elif table == "import_staging_batches":
+                    conn.execute(
+                        "DELETE FROM import_staging_batches WHERE company_id = ?",
+                        (company_id,),
+                    )
+                else:
+                    conn.execute(
+                        f"DELETE FROM {table} WHERE company_id = ?",
+                        (company_id,),
+                    )
+            else:
+                conn.execute(f"DELETE FROM {table}")
+            row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+            remaining = row["n"] if isinstance(row, dict) else row[0]
+            cleared[table] = remaining
+        except Exception as exc:
+            logger.warning("clear_master_data: %s — %s", table, exc)
+            if hasattr(conn, "rollback"):
+                conn.rollback()
+
+    conn.commit()
+    logger.info("Master data cleared (company_id=%s)", company_id or "ALL")
+    return {"cleared": True, "company_id": company_id, "remaining_rows": cleared}
 
 
 def create_master_data_import(

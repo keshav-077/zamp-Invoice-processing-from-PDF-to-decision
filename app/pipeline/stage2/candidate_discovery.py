@@ -53,7 +53,18 @@ class CandidateDiscovery:
             candidates.append(po)
             seen_po_numbers.add(po_number)
 
-        # 1. Typed reference lookup (order_ref, contract_ref, etc.)
+        # 1. Imported transaction history (source_records) by invoice number
+        if invoice_number and vendor_name:
+            for record in repository.search_source_records_by_invoice_number(
+                invoice_number, vendor_name, company_id
+            ):
+                from app.services.import_po_mirror import source_record_as_po_candidate
+
+                po = source_record_as_po_candidate(record)
+                if po:
+                    _add(po, "source_record_invoice", 0.88)
+
+        # 2. Typed reference lookup (order_ref, contract_ref, etc.)
         for ref in typed_references or []:
             ref_type = ref.get("type", "order_ref")
             ref_value = ref.get("value")
@@ -62,7 +73,7 @@ class CandidateDiscovery:
             for po in repository.search_pos_by_reference(ref_type, str(ref_value), company_id):
                 _add(po, po.get("_retrieval_method", "reference"), po.get("_retrieval_confidence", 0.9))
 
-        # 2. Exact / normalized PO number (when present on invoice)
+        # 3. Exact / normalized PO number (when present on invoice)
         if po_value:
             for po in repository.search_pos_by_number(po_value):
                 _add(po, "exact", 1.0)
@@ -71,7 +82,7 @@ class CandidateDiscovery:
                 for po in self._search_normalized(normalized, company_id):
                     _add(po, "normalized", 0.85)
 
-        # 3. Vendor identity — skip when trusted PO on invoice was not found in master
+        # 4. Vendor identity — skip when trusted PO on invoice was not found in master
         if (vendor_id or vendor_name) and not (
             require_exact_po and po_value and not any(
                 c.get("_retrieval_method") in ("exact", "normalized", "reference", "source_record_po_hint")
@@ -85,7 +96,7 @@ class CandidateDiscovery:
                 conf = po.get("_retrieval_confidence", 0.7)
                 _add(po, method, conf)
 
-        # 4. Vendor + remaining amount heuristic (partial invoices OK)
+        # 5. Vendor + remaining amount heuristic (partial invoices OK)
         if suggestion_mode and (vendor_id or vendor_name) and invoice_total is not None:
             for po in self.discover_by_vendor_amount(
                 vendor_id=vendor_id,
@@ -99,7 +110,7 @@ class CandidateDiscovery:
                     po.get("_retrieval_confidence", 0.5),
                 )
 
-        # 5. Fuzzy PO recovery only when a PO-like value was extracted
+        # 6. Fuzzy PO recovery only when a PO-like value was extracted
         if po_value and confidence_action == "expand" and not candidates:
             for po in self._fuzzy_po_search(po_value, company_id):
                 _add(po, "fuzzy", po.get("_fuzzy_score", 0.4))

@@ -80,12 +80,13 @@ class TestVendorSearch:
 class TestUnifiedPoMasterDiscovery:
     @patch("app.pipeline.stage2.candidate_discovery.repository")
     def test_vendor_identity_finds_import_mirrored_po(self, mock_repo):
-        """Mirrored import POs are discovered via purchase_orders vendor search, not source_records."""
+        """Mirrored import POs are discovered via purchase_orders vendor search."""
         po = dict(MOCK_POS[0])
         po["_retrieval_method"] = "import_derived"
         po["_retrieval_confidence"] = 0.85
         mock_repo.search_pos_by_number.return_value = []
         mock_repo.search_pos_by_reference.return_value = []
+        mock_repo.search_source_records_by_invoice_number.return_value = []
         mock_repo.search_open_pos_by_vendor_identity.return_value = [po]
         mock_repo.get_po_lines.return_value = []
 
@@ -102,7 +103,38 @@ class TestUnifiedPoMasterDiscovery:
         assert len(result) >= 1
         assert result[0]["po_number"] == "PO-2298"
         assert result[0]["_retrieval_method"] == "import_derived"
-        mock_repo.search_source_records_by_invoice_number.assert_not_called()
+
+    @patch("app.pipeline.stage2.candidate_discovery.repository")
+    def test_source_records_table_also_searched_by_invoice(self, mock_repo):
+        mock_repo.search_pos_by_number.return_value = []
+        mock_repo.search_pos_by_reference.return_value = []
+        mock_repo.search_open_pos_by_vendor_identity.return_value = []
+        mock_repo.get_po_lines.return_value = []
+        mock_repo.search_source_records_by_invoice_number.return_value = [
+            {
+                "source_record_id": "abc123",
+                "company_id": "DEFAULT",
+                "vendor_name": "Leach Inc",
+                "invoice_number": "738410",
+                "invoice_total": 240.73,
+                "currency": "USD",
+                "po_reference": None,
+            }
+        ]
+
+        cd = CandidateDiscovery()
+        result = cd.discover(
+            po_value=None,
+            vendor_id=None,
+            vendor_name="Leach Inc",
+            confidence_action="trust",
+            invoice_number="738410",
+            suggestion_mode=True,
+        )
+
+        assert len(result) == 1
+        assert result[0]["po_number"] == "IMP-abc123"
+        assert result[0]["_retrieval_method"] == "source_record_invoice"
 
 
 class TestTrustedPOMiss:

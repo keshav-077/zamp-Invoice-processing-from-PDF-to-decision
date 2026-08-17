@@ -67,6 +67,43 @@ def build_mirrored_po_row(
     }
 
 
+def source_record_as_po_candidate(record: dict) -> dict | None:
+    """Convert an imported source_records row into a PO-shaped candidate for Stage 2."""
+    total = float(record.get("invoice_total") or 0)
+    if total <= 0:
+        return None
+    po_number = record.get("po_reference") or f"IMP-{record['source_record_id']}"
+    return {
+        "po_number": po_number,
+        "company_id": record.get("company_id", "DEFAULT"),
+        "vendor_id": record.get("vendor_id") or "",
+        "vendor_name": record.get("vendor_name") or "",
+        "total_amount": total,
+        "currency": record.get("currency") or "USD",
+        "status": "open",
+        "po_type": "blanket",
+        "issue_date": record.get("invoice_date") or datetime.utcnow().strftime("%Y-%m-%d"),
+        "expiry_date": None,
+        "received_amount": 0.0,
+        "previously_invoiced": 0.0,
+        "lines": [],
+        "metadata": {
+            "import_derived": True,
+            "source_record_id": record.get("source_record_id"),
+            "from_source_records": True,
+        },
+        "metadata_json": json.dumps(
+            {
+                "import_derived": True,
+                "source_record_id": record.get("source_record_id"),
+                "from_source_records": True,
+            }
+        ),
+        "_import_derived": True,
+        "_from_source_records": True,
+    }
+
+
 def ensure_vendor_for_mirror(
     company_id: str,
     vendor_id: str | None,
