@@ -55,16 +55,24 @@ class _PgConnection:
 
         sql = sql.replace("?", "%s")
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, params)
-        return _PgResult(cur)
+        try:
+            cur.execute(sql, params)
+            return _PgResult(cur)
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def executemany(self, sql: str, params_seq):
         import psycopg2.extras
 
         sql = sql.replace("?", "%s")
         cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.executemany(sql, params_seq)
-        return _PgResult(cur)
+        try:
+            cur.executemany(sql, params_seq)
+            return _PgResult(cur)
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def commit(self):
         self._conn.commit()
@@ -546,6 +554,8 @@ MIGRATION_COLUMNS = [
 
 def _migrate_columns(conn) -> None:
     """Add new columns to existing tables if missing."""
+    from app.db.sql_dialect import now_expr
+
     for table, column, col_type in MIGRATION_COLUMNS:
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
@@ -559,9 +569,9 @@ def _migrate_columns(conn) -> None:
     # Ensure default company exists for company-scoped master data
     try:
         conn.execute(
-            """
+            f"""
             INSERT INTO companies (company_id, name, created_at)
-            VALUES (?, ?, datetime('now'))
+            VALUES (?, ?, {now_expr()})
             ON CONFLICT(company_id) DO NOTHING
             """,
             ("DEFAULT", "Default Company"),

@@ -45,6 +45,7 @@ from app.pipeline.stage2.match_explanation import build_match_explanation
 from app.providers.base import LLMProvider, ProviderError
 from app.providers.resilience import invoke_with_fallback
 from app.context.tenant import get_company_id
+from app.db import repository
 from app.pipeline.stage3.orchestrator import Stage3Orchestrator
 from app.pipeline.stage4.orchestrator import Stage4Orchestrator
 from app.pipeline.status_messages import (
@@ -90,6 +91,14 @@ class PipelineOrchestrator:
         document_id = str(uuid.uuid4())[:12]
 
         logger.info(f"[{document_id}] Starting pipeline for: {file_path.name}")
+
+        # Postgres FK constraints require invoice_runs before stage 2–5 child rows.
+        repository.ensure_invoice_run_stub(
+            document_id=document_id,
+            filename=file_path.name,
+            original_file_path=str(file_path),
+            company_id=get_company_id(),
+        )
 
         # Initialize result with defaults
         result = PipelineResult(

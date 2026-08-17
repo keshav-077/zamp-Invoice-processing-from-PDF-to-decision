@@ -10,10 +10,43 @@ import logging
 from datetime import datetime
 
 from app.db.database import get_connection
-from app.db.sql_dialect import build_upsert_sql
+from app.db.sql_dialect import build_upsert_sql, is_postgres
 from app.models.pipeline import PipelineResult
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_invoice_run_stub(
+    document_id: str,
+    filename: str,
+    original_file_path: str = "",
+    company_id: str = "DEFAULT",
+) -> None:
+    """
+    Create a placeholder invoice_runs row before stage 2–5 child records.
+
+    Postgres enforces FK constraints; SQLite does not unless PRAGMA foreign_keys=ON.
+    The pipeline persists stage artifacts before the final save_run() upsert.
+    """
+    conn = get_connection()
+    conn.execute(
+        """
+        INSERT INTO invoice_runs (
+            document_id, filename, status, upload_timestamp,
+            original_file_path, company_id, workflow_state
+        )
+        VALUES (?, ?, 'processing', ?, ?, ?, 'processing')
+        ON CONFLICT (document_id) DO NOTHING
+        """,
+        (
+            document_id,
+            filename,
+            datetime.utcnow().isoformat(),
+            original_file_path,
+            company_id,
+        ),
+    )
+    conn.commit()
 
 
 def save_run(result: PipelineResult, company_id: str = "DEFAULT") -> None:
@@ -791,22 +824,38 @@ def append_audit_event(
 ) -> int:
     """Append an entry to the hash-chained audit ledger. Returns ledger_sequence."""
     conn = get_connection()
-    cursor = conn.execute(
-        """
-        INSERT INTO audit_ledger
-        (tenant_id, event_type, aggregate_id, explanation_id, decision_id,
-         invoice_id, content_hash, previous_hash, event_data_json,
-         actor_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            tenant_id, event_type, aggregate_id, explanation_id, decision_id,
-            invoice_id, content_hash, previous_hash, event_data_json,
-            actor_id, created_at,
-        ),
+    params = (
+        tenant_id, event_type, aggregate_id, explanation_id, decision_id,
+        invoice_id, content_hash, previous_hash, event_data_json,
+        actor_id, created_at,
     )
-    conn.commit()
-    sequence = cursor.lastrowid
+    if is_postgres():
+        row = conn.execute(
+            """
+            INSERT INTO audit_ledger
+            (tenant_id, event_type, aggregate_id, explanation_id, decision_id,
+             invoice_id, content_hash, previous_hash, event_data_json,
+             actor_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING ledger_sequence
+            """,
+            params,
+        ).fetchone()
+        conn.commit()
+        sequence = int(row["ledger_sequence"]) if row else 0
+    else:
+        cursor = conn.execute(
+            """
+            INSERT INTO audit_ledger
+            (tenant_id, event_type, aggregate_id, explanation_id, decision_id,
+             invoice_id, content_hash, previous_hash, event_data_json,
+             actor_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            params,
+        )
+        conn.commit()
+        sequence = cursor.lastrowid
     logger.info(f"Audit ledger: seq={sequence} type={event_type} id={aggregate_id}")
     return sequence
 
