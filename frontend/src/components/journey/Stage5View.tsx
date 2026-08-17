@@ -9,9 +9,9 @@ import { fetchAuditReconstruct } from '@/lib/api/audit'
 import { fetchExplanationNarrative } from '@/lib/api/audit'
 import { coalesceDict, num } from '@/lib/normalize'
 import { Badge } from '@/components/ui/badge'
-import type { FieldExtraction, NarrativeEntry } from '@/types'
+import type { ExtractedField, NarrativeEntry } from '@/types'
 
-function fieldVal(f: FieldExtraction | undefined): string {
+function fieldVal(f: ExtractedField<string | number> | undefined): string {
   if (!f?.value) return '—'
   return String(f.value)
 }
