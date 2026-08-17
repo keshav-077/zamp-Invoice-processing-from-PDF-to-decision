@@ -46,6 +46,10 @@ class _PgConnection:
     def __init__(self, conn):
         self._conn = conn
 
+    @property
+    def closed(self) -> bool:
+        return bool(getattr(self._conn, "closed", 1))
+
     def execute(self, sql: str, params=()):
         import psycopg2.extras
 
@@ -85,7 +89,10 @@ def get_connection():
     """Get database connection — Neon Postgres when DATABASE_URL set, else SQLite."""
     global _connection, _is_postgres
     if _connection is not None:
-        return _connection
+        if _is_postgres and getattr(_connection, "closed", True):
+            _connection = None
+        else:
+            return _connection
 
     if settings.database_url:
         import psycopg2

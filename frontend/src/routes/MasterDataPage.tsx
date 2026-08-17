@@ -95,6 +95,7 @@ export function MasterDataPage() {
   const importsQuery = useQuery({
     queryKey: ['master-data-imports'],
     queryFn: () => listMasterDataImports(),
+    retry: 1,
   })
 
   const totalReady = useMemo(

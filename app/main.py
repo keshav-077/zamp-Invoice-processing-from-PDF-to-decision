@@ -56,8 +56,10 @@ async def lifespan(app: FastAPI):
                 logger.error("Deploy check failed: %s — %s", check.name, check.detail)
 
     yield
-    close_db()
-    logger.info("InvoiceFlow AI shut down")
+    # Serverless: keep DB open for warm invocations; Neon handles idle connections.
+    if not settings.is_vercel:
+        close_db()
+        logger.info("InvoiceFlow AI shut down")
 
 
 app = FastAPI(
